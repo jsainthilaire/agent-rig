@@ -1,0 +1,8 @@
+# Agent Rig leaves root and global Codex settings unchanged.
+# Current Codex discovers namespaced agents in the project's .codex/agents/
+# or the Codex home's agents/ directory, depending on installation scope.
+# Workflow activation is explicit and controlled by the managed instruction section.
+# If you want Rig workflows and your setup disables multi-agent tools, enable
+# them manually in the existing [agents] table, or add that table if absent:
+# [agents]
+# enabled = true

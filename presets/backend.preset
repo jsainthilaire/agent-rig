@@ -1,0 +1,3 @@
+# Backend and persistence-heavy projects
+agents: explorer implementer database tester reviewer debugger
+workflows: feature bug review quick

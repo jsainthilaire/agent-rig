@@ -1,0 +1,3 @@
+# Security assessments and security-sensitive projects
+agents: explorer security reviewer tester debugger
+workflows: security review bug quick

@@ -1,0 +1,3 @@
+# All standard roles are available; task selection still stays minimal
+agents: explorer implementer database tester reviewer debugger security
+workflows: feature bug review security quick
