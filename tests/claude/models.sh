@@ -68,7 +68,7 @@ fi
 exec "$AGENT_RIG_REAL_MV" "$@"
 SH
 chmod +x "$TEST_ROOT/failing-bin/mv"
-if env PATH="$TEST_ROOT/failing-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/CLAUDE.md" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed-upgrade" bash "$rig/bin/agent-rig" install --provider claude --target "$project" > "$TEST_ROOT/output" 2>&1; then fail 'Policy rollback failure was not triggered'; fi
+if env PATH="$TEST_ROOT/failing-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/CLAUDE.md" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed-upgrade" bash "$rig/bin/agent-rig" install --yes --provider claude --target "$project" > "$TEST_ROOT/output" 2>&1; then fail 'Policy rollback failure was not triggered'; fi
 assert_contains "$TEST_ROOT/output" 'Write failed; restoring'
 fingerprint_tree "$project" > "$TEST_ROOT/after"
 assert_same "$TEST_ROOT/before" "$TEST_ROOT/after"

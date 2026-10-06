@@ -24,6 +24,26 @@ preset=full
 dry_run=0
 allow_modified=0
 backup_dir=''
+assume_yes=0
+progress_active=0
+progress_current=0
+progress_total=0
+terminal_output=0
+color_reset=''
+color_bold=''
+color_cyan=''
+color_green=''
+color_yellow=''
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
+    terminal_output=1
+    if [ "${NO_COLOR+x}" != x ]; then
+        color_reset=$'\033[0m'
+        color_bold=$'\033[1m'
+        color_cyan=$'\033[36m'
+        color_green=$'\033[32m'
+        color_yellow=$'\033[33m'
+    fi
+fi
 
 usage() {
     cat <<'EOF'
@@ -36,6 +56,7 @@ Usage: bash bin/agent-rig install --target DIRECTORY [options]
   --global             Codex: CODEX_HOME or ~/.codex; Claude: CLAUDE_CONFIG_DIR or ~/.claude
   --preset NAME        Install full (default), minimal, backend, or security
   --dry-run            Show changes without writing to the target
+  --yes, -y            Install without the yes/no prompt (for automation)
   --replace-modified   Install: replace conflicting Rig content with backups
   --remove-modified    Uninstall: remove modified Rig content with backups
   --help               Show this help
@@ -47,11 +68,83 @@ Existing provider configuration is preserved. Repeat the command to update an
 installation or switch presets. Uninstall uses the recorded manifest and keeps
 provider configuration, surrounding instructions, and backups. Rig remains opt-in
 through workflow aliases.
+Installs show the plan and ask for confirmation before writing. The default is
+no; dry runs and unchanged installations do not prompt. Colors are automatic in
+terminals; set NO_COLOR to disable them.
 EOF
 }
 
 die() { printf 'agent-rig: %s\n' "$*" >&2; exit 1; }
 checksum() { cksum < "$1"; }
+
+installation_summary() {
+    local rel existing=0 role_count=0 workflow_count=0
+    for rel in $configuration_paths $instruction_candidates "$agent_directory"; do
+        if [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; then existing=1; fi
+    done
+    for rel in $agents; do role_count=$((role_count + 1)); done
+    for rel in $workflows; do workflow_count=$((workflow_count + 1)); done
+    printf '\n%sAgent Rig %s installation%s\n' "$color_bold" "$provider_label" "$color_reset"
+    printf '  Scope:  %s\n  Target: %s\n  Preset: %s (%s agents, %s workflows)\n' "$install_scope" "$target" "$preset" "$role_count" "$workflow_count"
+    if [ "$global_install" -eq 1 ]; then
+        printf '  Rig will be available across projects in this provider home.\n'
+        if [ ! -d "$target" ]; then printf '  The provider home will be created.\n'; fi
+    else
+        printf '  Rig will be available in this project.\n'
+    fi
+    if [ ! -s "$stage/operations.tsv" ]; then printf '\n'; return; fi
+    if [ "$existing" -eq 1 ]; then
+        printf '\n%sExisting %s configuration detected:%s\n' "$color_yellow" "$provider_label" "$color_reset"
+        for rel in $configuration_paths $instruction_candidates "$agent_directory"; do
+            if [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; then printf '  %s\n' "$rel"; fi
+        done
+        printf 'Agent Rig will merge its agents and managed instructions into this setup.\n'
+        printf 'Existing provider settings and instructions outside Rig sections are preserved.\n'
+    fi
+    printf '\nThe plan will install/update agents in %s/, workflows in %s/workflows/,\n' "$agent_directory" "$state_directory"
+    printf 'and the managed Rig section in %s, then record the installation manifest.\n' "$instructions_file"
+    printf 'Previously managed files outside the selected preset will be removed.\n'
+    printf 'Existing files changed or removed will be backed up under %s/backups/.\n' "$state_directory"
+    if [ "$allow_modified" -eq 1 ]; then
+        printf '%s--replace-modified: conflicting Rig content will be replaced or removed with backups.%s\n' "$color_yellow" "$color_reset"
+    fi
+    printf 'Rig activates through leading workflow aliases such as @feature or @quick.\n\n'
+}
+
+confirm_installation() {
+    local answer
+    if [ "$assume_yes" -eq 1 ]; then
+        printf 'Confirmation accepted via --yes.\n'
+        return
+    fi
+    while :; do
+        printf '%sContinue with installation? [y/N] %s' "$color_cyan" "$color_reset"
+        if ! IFS=$' \t' read -r answer; then
+            printf '\n'
+            die 'No confirmation received; no target files changed. Use --yes for unattended installation.'
+        fi
+        case $answer in
+            [yY]|[yY][eE][sS]) printf '\n'; return ;;
+            ''|[nN]|[nN][oO])
+                printf 'Installation cancelled; no target files changed.\n'
+                exit 0 ;;
+            *) printf 'Please answer yes or no.\n' ;;
+        esac
+    done
+}
+
+render_progress() {
+    local filled=$((progress_current * 20 / progress_total)) percent=$((progress_current * 100 / progress_total))
+    local full='####################' empty='--------------------'
+    if [ "$terminal_output" -eq 1 ]; then
+        printf '\r'
+    elif [ "$progress_current" -ne 0 ] && [ "$progress_current" -ne "$progress_total" ]; then
+        return
+    fi
+    printf '%s  [%s%s] %3d%% (%d/%d files)%s' "$color_cyan" "${full:0:filled}" "${empty:filled}" "$percent" "$progress_current" "$progress_total" "$color_reset"
+    if [ "$terminal_output" -eq 0 ] || [ "$progress_current" -eq "$progress_total" ]; then printf '\n'; fi
+    if [ "$progress_current" -eq "$progress_total" ]; then progress_active=0; fi
+}
 
 # Reject links and unexpected object types along every destination path.
 check_path() {
@@ -112,6 +205,7 @@ rollback() {
 cleanup() {
     local result=$? tmp
     set +e
+    if [ "$progress_active" -eq 1 ]; then printf '\n'; fi
     if [ "$applying" -eq 1 ] && [ "$committed" -eq 0 ]; then rollback; fi
     if [ -n "$stage" ] && [ -f "$stage/temp-paths" ]; then
         while IFS= read -r tmp; do rm -f "$tmp"; done < "$stage/temp-paths"
@@ -146,6 +240,9 @@ while [ "$#" -gt 0 ]; do
             esac
             shift 2 ;;
         --dry-run) dry_run=1; shift ;;
+        --yes|-y)
+            [ "$operation" = install ] || die '--yes is only supported by install'
+            assume_yes=1; shift ;;
         --global) global_install=1; shift ;;
         --replace-modified)
             [ "$operation" = install ] || die 'Use --remove-modified with uninstall'
@@ -474,17 +571,22 @@ fi
 if [ "$operation" = uninstall ]; then
     printf 'Agent Rig %s uninstall: %s -> %s\n' "$provider" "$install_scope" "$target"
 else
-    printf 'Agent Rig %s: %s -> %s\n' "$provider" "$preset" "$target"
+    installation_summary
 fi
 if [ ! -s "$stage/operations.tsv" ]; then
     printf 'Already up to date.\n'
 else
-    while IFS="$(printf '\t')" read -r op rel; do printf '  %s %s\n' "$op" "$rel"; done < "$stage/operations.tsv"
+    printf '%sPlanned changes:%s\n' "$color_bold" "$color_reset"
+    while IFS="$(printf '\t')" read -r op rel; do
+        if [ "$op" = delete ]; then change_color=$color_yellow; else change_color=$color_green; fi
+        printf '  %s%s%s %s\n' "$change_color" "$op" "$color_reset" "$rel"
+    done < "$stage/operations.tsv"
 fi
 
 if [ "$dry_run" -eq 1 ]; then
     printf 'Dry run: no target files changed.\n'
 elif [ -s "$stage/operations.tsv" ]; then
+    if [ "$operation" = install ]; then confirm_installation; fi
     check_path .agent-rig dir
     check_path "$state_directory/backups" dir
     check_path "$state_directory/.install-lock" dir
@@ -517,6 +619,12 @@ elif [ -s "$stage/operations.tsv" ]; then
             cp -p "$target/$rel" "$backup_dir/$rel"
         fi
     done < "$stage/operations.tsv"
+    if [ "$operation" = install ]; then
+        progress_total=$(wc -l < "$stage/operations.tsv")
+        progress_active=1
+        printf '\n%sInstalling Agent Rig...%s\n' "$color_bold" "$color_reset"
+        render_progress
+    fi
     applying=1
     while IFS="$(printf '\t')" read -r op rel; do
         check_path "$rel"
@@ -537,12 +645,16 @@ elif [ -s "$stage/operations.tsv" ]; then
             fi
             mv -f "$tmp" "$target/$rel"
         fi
+        if [ "$operation" = install ]; then
+            progress_current=$((progress_current + 1))
+            render_progress
+        fi
     done < "$stage/operations.tsv"
     committed=1
     if [ "$operation" = uninstall ]; then
         printf 'Uninstalled successfully.\n'
     else
-        printf 'Installed successfully.\n'
+        printf '%sInstalled successfully.%s\n' "$color_green" "$color_reset"
     fi
     if [ -n "$backup_dir" ]; then printf 'Backups: %s\n' "$backup_dir"; fi
 fi

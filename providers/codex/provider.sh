@@ -29,6 +29,7 @@ provider_paths() {
         agent_directory=.codex/agents
         config_path=.codex/config.toml
     fi
+    configuration_paths=$config_path
 }
 
 provider_manifest_patterns() {

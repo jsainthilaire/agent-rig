@@ -3,6 +3,7 @@
 check:
 	for script in bin/agent-rig providers/*/provider.sh tests/*.sh tests/*/*.sh; do bash -n "$$script" || exit 1; done
 	python3 tests/validate.py
+	python3 tests/installer.py
 	bash tests/codex/install.sh
 	bash tests/codex/uninstall.sh
 	bash tests/codex/migration.sh

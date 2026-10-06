@@ -20,7 +20,7 @@ fingerprint_tree() {
 install() {
     local rig=$1 project=$2
     shift 2
-    bash "$rig/bin/agent-rig" install --target "$project" "$@" > "$TEST_ROOT/output" 2>&1 || {
+    bash "$rig/bin/agent-rig" install --yes --target "$project" "$@" > "$TEST_ROOT/output" 2>&1 || {
         cat "$TEST_ROOT/output" >&2
         fail "Installation failed: $project"
     }
@@ -29,7 +29,7 @@ install() {
 reject() {
     local rig=$1 project=$2
     shift 2
-    if bash "$rig/bin/agent-rig" install --target "$project" "$@" > "$TEST_ROOT/output" 2>&1; then
+    if bash "$rig/bin/agent-rig" install --yes --target "$project" "$@" > "$TEST_ROOT/output" 2>&1; then
         fail "Expected rejection: $project"
     fi
 }
@@ -37,7 +37,7 @@ reject() {
 install_global() {
     local rig=$1 codex_home=$2
     shift 2
-    env CODEX_HOME="$codex_home" bash "$rig/bin/agent-rig" install --global "$@" > "$TEST_ROOT/output" 2>&1 || {
+    env CODEX_HOME="$codex_home" bash "$rig/bin/agent-rig" install --yes --global "$@" > "$TEST_ROOT/output" 2>&1 || {
         cat "$TEST_ROOT/output" >&2
         fail "Global installation failed: $codex_home"
     }
@@ -46,7 +46,7 @@ install_global() {
 reject_global() {
     local rig=$1 codex_home=$2
     shift 2
-    if env CODEX_HOME="$codex_home" bash "$rig/bin/agent-rig" install --global "$@" > "$TEST_ROOT/output" 2>&1; then
+    if env CODEX_HOME="$codex_home" bash "$rig/bin/agent-rig" install --yes --global "$@" > "$TEST_ROOT/output" 2>&1; then
         fail "Expected global rejection: $codex_home"
     fi
 }

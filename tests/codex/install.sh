@@ -463,7 +463,7 @@ for argument; do
 done
 EOF
 chmod +x "$TEST_ROOT/changing-bin/dd"
-if env PATH="$TEST_ROOT/changing-bin:$PATH" AGENT_RIG_REAL_DD="$(command -v dd)" AGENT_RIG_CHANGE_PATH="$project/AGENTS.md" AGENT_RIG_CHANGE_ONCE="$TEST_ROOT/changed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --target "$project" --preset full > "$TEST_ROOT/output" 2>&1; then
+if env PATH="$TEST_ROOT/changing-bin:$PATH" AGENT_RIG_REAL_DD="$(command -v dd)" AGENT_RIG_CHANGE_PATH="$project/AGENTS.md" AGENT_RIG_CHANGE_ONCE="$TEST_ROOT/changed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --target "$project" --preset full > "$TEST_ROOT/output" 2>&1; then
     fail 'A destination changed during preflight should stop installation'
 fi
 assert_contains "$TEST_ROOT/output" 'Destination changed during preflight: AGENTS.md'
@@ -493,7 +493,7 @@ fi
 exec "$AGENT_RIG_REAL_MV" "$@"
 EOF
 chmod +x "$TEST_ROOT/fake-bin/mv"
-if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/.codex/agents/agent_rig_tester.toml" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed-once" bash "$rig/bin/agent-rig" install --target "$project" > "$TEST_ROOT/output" 2>&1; then
+if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/.codex/agents/agent_rig_tester.toml" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed-once" bash "$rig/bin/agent-rig" install --yes --target "$project" > "$TEST_ROOT/output" 2>&1; then
     fail 'Injected write failure should fail installation'
 fi
 assert_contains "$TEST_ROOT/output" 'restoring changed files'
@@ -505,7 +505,7 @@ pass 'Mid-apply failure restores originals and cleans up lock and temporary file
 
 project=$TEST_ROOT/new-install-rollback
 mkdir "$project"
-if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/.agent-rig/codex/manifest.tsv" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/new-failed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --target "$project" > "$TEST_ROOT/output" 2>&1; then
+if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/.agent-rig/codex/manifest.tsv" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/new-failed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --target "$project" > "$TEST_ROOT/output" 2>&1; then
     fail 'Injected failure should fail a new installation'
 fi
 assert_contains "$TEST_ROOT/output" 'restoring changed files'
@@ -554,16 +554,16 @@ assert_missing "$codex_home/.agent-rig/codex/backups"
 pass 'Global repeat install is idempotent'
 
 test_user_home=$TEST_ROOT/fallback-user-home
-env -u CODEX_HOME HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --global > "$TEST_ROOT/output" 2>&1 || fail 'Global HOME fallback failed'
+env -u CODEX_HOME HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --global > "$TEST_ROOT/output" 2>&1 || fail 'Global HOME fallback failed'
 assert_file "$test_user_home/.codex/agents/agent_rig_explorer.toml"
 assert_file "$test_user_home/.codex/AGENTS.md"
 assert_file "$test_user_home/.codex/config.toml"
 assert_contains "$test_user_home/.codex/AGENTS.md" 'Installed preset: **full**'
 assert_file "$test_user_home/.codex/agents/agent_rig_security.toml"
-env CODEX_HOME= HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --global > "$TEST_ROOT/output" 2>&1 || fail 'Empty CODEX_HOME fallback failed'
+env CODEX_HOME= HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --global > "$TEST_ROOT/output" 2>&1 || fail 'Empty CODEX_HOME fallback failed'
 assert_contains "$TEST_ROOT/output" 'Already up to date.'
 codex_home=$TEST_ROOT/explicit-codex-home
-env CODEX_HOME="$codex_home" HOME="$TEST_ROOT/unused-user-home" bash "$SOURCE_ROOT/bin/agent-rig" install --global > "$TEST_ROOT/output" 2>&1 || fail 'Explicit CODEX_HOME failed'
+env CODEX_HOME="$codex_home" HOME="$TEST_ROOT/unused-user-home" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --global > "$TEST_ROOT/output" 2>&1 || fail 'Explicit CODEX_HOME failed'
 assert_file "$codex_home/agents/agent_rig_explorer.toml"
 assert_missing "$TEST_ROOT/unused-user-home"
 pass 'Global installation honors CODEX_HOME and falls back to HOME/.codex when unset or empty'
@@ -673,7 +673,7 @@ codex_home=$TEST_ROOT/global-transition-rollback
 install_global "$SOURCE_ROOT" "$codex_home"
 printf '# Active override\n' > "$codex_home/AGENTS.override.md"
 fingerprint_tree "$codex_home" > "$TEST_ROOT/before"
-if env CODEX_HOME="$codex_home" PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$codex_home/AGENTS.override.md" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/global-transition-failed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --global > "$TEST_ROOT/output" 2>&1; then
+if env CODEX_HOME="$codex_home" PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$codex_home/AGENTS.override.md" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/global-transition-failed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --global > "$TEST_ROOT/output" 2>&1; then
     fail 'Injected override-transition write failure should fail installation'
 fi
 assert_contains "$TEST_ROOT/output" 'restoring changed files'
@@ -726,7 +726,7 @@ assert_same "$external/config.toml" "$TEST_ROOT/external-original"
 pass 'Global destination and Codex-home symlinks are rejected without external writes'
 
 codex_home=$TEST_ROOT/global-rollback
-if env CODEX_HOME="$codex_home" PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$codex_home/.agent-rig/codex/manifest.tsv" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/global-failed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --global > "$TEST_ROOT/output" 2>&1; then
+if env CODEX_HOME="$codex_home" PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$codex_home/.agent-rig/codex/manifest.tsv" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/global-failed-once" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --global > "$TEST_ROOT/output" 2>&1; then
     fail 'Injected global write failure should fail installation'
 fi
 assert_contains "$TEST_ROOT/output" 'restoring changed files'
@@ -740,7 +740,7 @@ fi
 assert_contains "$TEST_ROOT/output" '--target or --global is required'
 reject "$SOURCE_ROOT" "$TEST_ROOT/default" --preset --dry-run
 assert_contains "$TEST_ROOT/output" 'Missing value for --preset before --dry-run'
-if bash "$SOURCE_ROOT/bin/agent-rig" install --target --dry-run > "$TEST_ROOT/output" 2>&1; then
+if bash "$SOURCE_ROOT/bin/agent-rig" install --yes --target --dry-run > "$TEST_ROOT/output" 2>&1; then
     fail 'An option cannot supply the target value'
 fi
 assert_contains "$TEST_ROOT/output" 'Missing value for --target before --dry-run'

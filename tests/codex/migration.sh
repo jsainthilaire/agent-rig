@@ -42,7 +42,7 @@ for scope in project global; do
     if [ "$scope" = project ]; then
         install "$SOURCE_ROOT" "$destination" --provider claude --preset minimal
     else
-        env CLAUDE_CONFIG_DIR="$destination" bash "$SOURCE_ROOT/bin/agent-rig" install --provider claude --global --preset minimal > "$TEST_ROOT/output" 2>&1 || fail 'Claude coexistence failed'
+        env CLAUDE_CONFIG_DIR="$destination" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --provider claude --global --preset minimal > "$TEST_ROOT/output" 2>&1 || fail 'Claude coexistence failed'
     fi
     assert_same "$TEST_ROOT/legacy-manifest" "$destination/.agent-rig/manifest.tsv"
     (cd "$destination" && find .agent-rig/claude -type f -exec cksum {} \; && cksum CLAUDE.md) | sort > "$TEST_ROOT/claude-before"
@@ -131,7 +131,7 @@ fi
 exec "$AGENT_RIG_REAL_MV" "$@"
 SH
 chmod +x "$TEST_ROOT/fake-bin/mv"
-if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/.agent-rig/codex/manifest.tsv" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed" bash "$SOURCE_ROOT/bin/agent-rig" install --target "$project" --preset minimal > "$TEST_ROOT/output" 2>&1; then fail 'Migration failure not triggered'; fi
+if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/.agent-rig/codex/manifest.tsv" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --target "$project" --preset minimal > "$TEST_ROOT/output" 2>&1; then fail 'Migration failure not triggered'; fi
 assert_contains "$TEST_ROOT/output" 'Write failed; restoring'
 fingerprint_tree "$project" > "$TEST_ROOT/after"
 assert_same "$TEST_ROOT/before" "$TEST_ROOT/after"

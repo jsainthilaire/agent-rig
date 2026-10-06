@@ -257,7 +257,7 @@ assert_missing "$TEST_ROOT/missing-global-parent"
 pass 'Uninstall does not create a missing Codex home or its parents'
 
 test_user_home=$TEST_ROOT/fallback-user-home
-env -u CODEX_HOME HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --global --preset minimal > "$TEST_ROOT/output" 2>&1 || fail 'HOME fallback install failed'
+env -u CODEX_HOME HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --global --preset minimal > "$TEST_ROOT/output" 2>&1 || fail 'HOME fallback install failed'
 env -u CODEX_HOME HOME="$test_user_home" bash "$SOURCE_ROOT/bin/agent-rig" uninstall --global > "$TEST_ROOT/output" 2>&1 || fail 'HOME fallback uninstall failed'
 assert_missing "$test_user_home/.codex/agents/agent_rig_explorer.toml"
 assert_missing "$test_user_home/.codex/.agent-rig/codex/manifest.tsv"

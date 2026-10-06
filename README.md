@@ -22,6 +22,16 @@ bin/agent-rig install --provider claude --target /path/to/project
 
 Run both commands against the same project to install both providers. Each defaults to the **full preset**: seven roles and five workflows. Add `--preset minimal`, `--preset backend`, or `--preset security` for a smaller set. Add `--dry-run` to preview changes without writing.
 
+Before writing, the installer shows the provider, project/global scope, destination, preset, and planned file changes, then asks `Continue with installation? [y/N]`. Enter `yes` to proceed or `no` (or press Enter) to cancel. When the selected provider already has configuration, the summary explains that Rig merges its agents and managed instructions into the setup while preserving existing provider settings and surrounding instructions. Updates and preset changes also require confirmation; dry runs and unchanged installations do not prompt.
+
+Terminal output uses colors and a progress bar that tracks completed file changes. Set `NO_COLOR=1` to disable colors. Redirected output and `TERM=dumb` use plain text with start/end progress lines. For unattended installs, explicitly accept the plan with `--yes` (or `-y`):
+
+```bash
+bin/agent-rig install --provider codex --target /path/to/project --yes
+```
+
+Without `--yes`, an install that needs changes stops without writing if no confirmation input is available.
+
 Start a new session of the selected provider in the target project, then make a request:
 
 ```text
@@ -358,12 +368,13 @@ Development checks require Make and Python 3.11+:
 make check
 ```
 
-The suite validates native agent output, presets, references, Markdown links/fences, and source formatting. Disposable project and global fixtures cover installation, updates, removal, coexistence, legacy migration, protected edits, model policy rendering, preserved instruction bytes, unsafe-path rejection, locks, and injected failures that exercise rollback. It does not change your actual provider installations or call models.
+The suite validates native agent output, presets, references, Markdown links/fences, and source formatting. Disposable project and global fixtures cover installation confirmation, terminal colors and progress, updates, removal, coexistence, legacy migration, protected edits, model policy rendering, preserved instruction bytes, unsafe-path rejection, locks, and injected failures that exercise rollback. It does not change your actual provider installations or call models.
 
 To run checks individually:
 
 ```bash
 python3 tests/validate.py
+python3 tests/installer.py
 bash tests/codex/install.sh
 bash tests/codex/uninstall.sh
 bash tests/codex/migration.sh

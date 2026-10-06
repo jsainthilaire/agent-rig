@@ -48,8 +48,13 @@ provider_global_target() {
 }
 
 provider_paths() {
-    if [ "$install_scope" = global ]; then agent_directory=agents
-    else agent_directory=.claude/agents; fi
+    if [ "$install_scope" = global ]; then
+        agent_directory=agents
+        configuration_paths='settings.json settings.local.json'
+    else
+        agent_directory=.claude/agents
+        configuration_paths='.claude/settings.json .claude/settings.local.json'
+    fi
 }
 
 provider_manifest_patterns() {

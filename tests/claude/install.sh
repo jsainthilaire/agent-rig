@@ -4,6 +4,7 @@ source "$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/../lib.sh
 claude_run() {
     local operation=$1 rig=$2 destination=$3 scope=$4
     shift 4
+    if [ "$operation" = install ]; then set -- --yes "$@"; fi
     if [ "$scope" = global ]; then
         env CLAUDE_CONFIG_DIR="$destination" bash "$rig/bin/agent-rig" "$operation" --provider claude --global "$@" > "$TEST_ROOT/output" 2>&1
     else
@@ -83,7 +84,7 @@ pass 'Claude global dry run and manifest-free removal create no directories'
 
 user_home=$TEST_ROOT/user-home
 mkdir "$user_home"
-env -u CLAUDE_CONFIG_DIR HOME="$user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --provider claude --global --preset minimal > "$TEST_ROOT/output" 2>&1 || fail 'Claude HOME fallback failed'
+env -u CLAUDE_CONFIG_DIR HOME="$user_home" bash "$SOURCE_ROOT/bin/agent-rig" install --yes --provider claude --global --preset minimal > "$TEST_ROOT/output" 2>&1 || fail 'Claude HOME fallback failed'
 assert_file "$user_home/.claude/agents/agent-rig-explorer.md"
 pass 'Claude global discovery honors the HOME fallback'
 
@@ -235,7 +236,9 @@ for operation in install uninstall; do
     fingerprint_tree "$project" > "$TEST_ROOT/before"
     # Both install and uninstall rewrite the instruction file after agent writes
     # or deletions, so failing that move exercises restoration of prior changes.
-    if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/CLAUDE.md" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed-$operation" bash "$rig/bin/agent-rig" "$operation" --provider claude --target "$project" > "$TEST_ROOT/output" 2>&1; then fail 'Injected failure was ignored'; fi
+    confirm_flag=''
+    if [ "$operation" = install ]; then confirm_flag=--yes; fi
+    if env PATH="$TEST_ROOT/fake-bin:$PATH" AGENT_RIG_REAL_MV="$(command -v mv)" AGENT_RIG_FAIL_PATH="$project/CLAUDE.md" AGENT_RIG_FAIL_ONCE="$TEST_ROOT/failed-$operation" bash "$rig/bin/agent-rig" "$operation" $confirm_flag --provider claude --target "$project" > "$TEST_ROOT/output" 2>&1; then fail 'Injected failure was ignored'; fi
     assert_contains "$TEST_ROOT/output" 'Write failed; restoring'
     fingerprint_tree "$project" > "$TEST_ROOT/after"
     assert_same "$TEST_ROOT/before" "$TEST_ROOT/after"
@@ -267,7 +270,7 @@ for provider in codex claude; do
     pass "$provider manifest patterns preserve literal dots and reject lookalike namespaces"
 done
 
-if bash "$SOURCE_ROOT/bin/agent-rig" install --provider unknown --target "$TEST_ROOT" > "$TEST_ROOT/output" 2>&1; then fail 'Unknown provider accepted'; fi
+if bash "$SOURCE_ROOT/bin/agent-rig" install --yes --provider unknown --target "$TEST_ROOT" > "$TEST_ROOT/output" 2>&1; then fail 'Unknown provider accepted'; fi
 assert_contains "$TEST_ROOT/output" 'Unknown provider'
 pass 'Unknown providers are rejected'
 printf '\nAll %s Claude and coexistence checks passed.\n' "$passed"
