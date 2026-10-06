@@ -1,381 +1,388 @@
 # Agent Rig
 
-Agent Rig gives Codex a consistent engineering process across your repositories. It provides reusable specialist agents, workflows, and presets that you can copy into a project or install globally.
+Reusable engineering workflows for **Codex** and **Claude Code**. Agent Rig installs specialist agents, workflow instructions, and presets into your projects or provider configuration directory.
 
-The root Codex agent owns the result. It delegates useful work to specialists, makes the final decisions, and verifies the outcome. Features get independent testing and review; small changes can stay with the root alone.
+The root agent owns the result: it chooses the design, delegates bounded work, reconciles findings, and verifies completion. Substantial changes get independent testing and review; simple changes stay with root.
 
-## Install
+**Rig is opt-in for each request.** Start a prompt with `@feature`, `@bug`, `@review`, `@security`, or `@quick` to activate it. Unprefixed requests use your existing setup.
 
-From this checkout, install into an existing project folder:
+[Quick start](#quick-start) · [Providers](#providers) · [Presets](#presets) · [Workflows](#workflows) · [Model policies](#model-policies) · [Updates and removal](#updates-and-removal) · [Customization](#customization) · [Development](#development)
 
-```bash
-bin/agent-rig install --target /path/to/project
-```
+## Quick start
 
-Or install for all your projects:
+Run the command for your provider from this checkout. The target project directory must already exist:
 
 ```bash
-bin/agent-rig install --global
+# Codex; --provider codex is also the default when omitted.
+bin/agent-rig install --provider codex --target /path/to/project
+
+# Claude Code.
+bin/agent-rig install --provider claude --target /path/to/project
 ```
 
-Both commands install the **full preset** by default: all seven roles and all five workflows. Use `--preset minimal`, `--preset backend`, or `--preset security` to choose a smaller set. Project installs require `--target`; global installs use `$CODEX_HOME`, falling back to `~/.codex`.
+Run both commands against the same project to install both providers. Each defaults to the **full preset**: seven roles and five workflows. Add `--preset minimal`, `--preset backend`, or `--preset security` for a smaller set. Add `--dry-run` to preview changes without writing.
 
-Start a new Codex session in your project after installation, then begin a request with a workflow alias:
+Start a new session of the selected provider in the target project, then make a request:
 
 ```text
 @feature Add employee bonus calculations.
+@bug Investigate why this payroll total is incorrect.
+@review Review the latest changes.
+@security Assess the authentication flow.
+@quick Fix the typo in README.md.
 ```
 
-**Agent Rig is opt-in.** Without a leading alias, Codex uses your existing setup and ignores Rig's workflows and roles. Installing the full preset makes specialists available; it does not run every agent on every task.
+Each line above is a separate example request. Installing roles makes them available; root uses only the specialists relevant to the task.
 
-The installer requires Bash 3.2+ and standard Unix utilities. Use a current Codex release that supports standalone agent TOML files. Existing Codex configuration is preserved, and installed files are editable copies. For previews, updates, and backups, see [installation details](#installation-details).
+The installer requires **Bash 3.2+ and standard Unix utilities**. Use a provider release that supports its native agent files and the configured model/effort fields. Account model access and session permissions still apply.
 
-To remove an installation, use `bin/agent-rig uninstall --target /path/to/project` or `bin/agent-rig uninstall --global`. See [uninstall details](#uninstall) for previews and locally modified files.
+### Install globally
 
-## How it works
-
-Agent Rig separates responsibilities so you can reuse the same process while keeping each repository's own conventions:
-
-| Concept | Purpose | Source |
-| --- | --- | --- |
-| Agent | Defines a specialist's responsibility, boundaries, output, model, and effort | [agents/](agents/) |
-| Workflow | Defines the stages and specialists for a type of task | [workflows/](workflows/) |
-| Preset | Selects the agents and workflows available in an installation | [presets/](presets/) |
-| Project instructions | Define activation, root ownership, and coordination | [templates/AGENTS.md](templates/AGENTS.md) |
-
-Codex follows the installed instructions when handling a request. The root chooses bounded assignments, coordinates file ownership, combines findings, and performs final verification. Subagents support the requested outcome and return their work to the root.
-
-```mermaid
-flowchart TD
-    Request["User request"] --> Alias{"Leading workflow alias?"}
-    Alias -->|No| Existing["Use the user's existing Codex setup"]
-    Alias -->|Yes| Root["Root: select the requested workflow"]
-    Root -->|Delegate when useful| Specialists["Selected specialist agents"]
-    Specialists -->|Return evidence and results| Root
-    Root --> Result["Root: verify and present the final result"]
-```
-
-The root normally delegates directly to specialists. Nested subagents require explicit root authorization and a clear benefit.
-
-## Agents
-
-| Agent | Responsibility | Typical output |
-| --- | --- | --- |
-| [explorer](agents/explorer.toml) | Trace architecture, execution paths, data flow, and dependencies | Relevant files, constraints, risks, and recommended implementation area |
-| [implementer](agents/implementer.toml) | Implement the root-approved design within assigned files | Scoped changes, checks, and remaining issues |
-| [database](agents/database.toml) | Analyze schema, SQL, migrations, indexes, transactions, and integrity | Persistence findings, migration risks, and verification recommendations |
-| [tester](agents/tester.toml) | Independently check requirements, edge cases, regressions, and failures | Meaningful tests, commands and results, defects, and coverage gaps |
-| [reviewer](agents/reviewer.toml) | Independently review a stable implementation | Actionable findings ranked CRITICAL/HIGH/MEDIUM/LOW, or a clear report of no findings |
-| [debugger](agents/debugger.toml) | Investigate a bounded failure hypothesis using evidence | Supporting and contradicting evidence, diagnosis, and smallest fix recommendation |
-| [security](agents/security.toml) | Assess reachable threats, trust boundaries, and abuse cases | Ranked findings, mitigations, adversarial scenarios, and assessment limits |
-
-Installed Codex names use the `agent_rig_` prefix, such as `agent_rig_explorer`. Explorer, database, reviewer, debugger, and security inspect and report without editing project files. Implementer writes assigned implementation files; tester may write separately assigned test files. Root decides which findings to accept and how to resolve them.
-
-## Workflows
-
-Start a request with the alias for the process you want:
-
-| Alias | Use for | Example |
-| --- | --- | --- |
-| `@feature` | Substantial feature development | `@feature Add employee bonus calculations.` |
-| `@bug` | A failure whose cause needs investigation | `@bug Payroll totals are incorrect for this case.` |
-| `@review` | Reviewing existing code or a proposed change | `@review Review the latest changes.` |
-| `@security` | A security assessment | `@security Review the authentication flow.` |
-| `@quick` | Trivial or low-risk changes | `@quick Fix the typo in README.md.` |
-
-Aliases are prompt conventions, not native Codex commands. The standalone token must appear at the start of the request, after optional whitespace. Quoting an alias or mentioning it later does not activate Rig. Activation is checked for each request; a previous alias does not activate a later unprefixed request.
-
-The diagrams below show the normal stages. Dotted branches mark optional work; parallel branches show independent stages. Specialists participate only when useful and installed. Root handles a stage when its specialist is unavailable, and explains any necessary workflow adaptation. Full makes all roles available without requiring every role to participate.
-
-### Feature
-
-Explore the architecture, let root decide the design, implement, then validate independently. Database analysis is useful when the feature affects persistence.
-
-```mermaid
-flowchart TD
-    Start["Root: define the requested outcome"] --> Explorer["Explorer: map the architecture"]
-    Start -.-> Database["Database: analyze persistence if relevant"]
-    Explorer --> Design["Root: decide the design and file ownership"]
-    Database --> Design
-    Design --> Implementer["Implementer: apply the approved design"]
-    Implementer --> Tester["Tester: independently validate behavior"]
-    Implementer --> Reviewer["Reviewer: independently review the change"]
-    Tester --> Findings["Root: reconcile findings and coordinate fixes"]
-    Reviewer --> Findings
-    Findings --> Verify["Root: perform final verification"]
-```
-
-Explorer and database may work in parallel. Tester and reviewer may work in parallel after implementation stabilizes, provided test edits stay outside the review target. Accepted fixes and new tests receive affected testing and follow-up review. See [the feature workflow](workflows/feature.md).
-
-### Bug
-
-Establish the failure, trace its execution path, and investigate separate hypotheses before applying a fix.
-
-```mermaid
-flowchart TD
-    Start["Root: establish expected behavior and reproduce the failure"] --> Explorer["Explorer: trace execution and data flow"]
-    Explorer --> A["Debugger A: investigate hypothesis A"]
-    Explorer -.-> B["Debugger B: investigate hypothesis B if useful"]
-    A --> Diagnosis["Root: decide the diagnosis and smallest valid fix"]
-    B --> Diagnosis
-    Diagnosis --> Implementer["Implementer: apply the fix"]
-    Implementer --> Tester["Tester: verify the failure case and regressions"]
-    Tester --> Reviewer["Reviewer: independently review the stable fix"]
-    Reviewer --> Verify["Root: resolve findings and verify the result"]
-```
-
-Debugger A and B are separate instances of the same role, assigned independent hypotheses that can run in parallel. Use debuggers when the cause remains uncertain, and one when a second adds little value. Root investigates when debugger is absent. An obvious low-risk bug can use quick. See [the bug workflow](workflows/bug.md).
-
-### Review
-
-Review an explicit, stable target. Add security or database expertise when those concerns are relevant.
-
-```mermaid
-flowchart TD
-    Start["Root: define the review target and requirements"] --> Reviewer["Reviewer: independently inspect the change"]
-    Start -.-> Security["Security: assess relevant threats"]
-    Start -.-> Database["Database: assess relevant persistence changes"]
-    Reviewer --> Summary["Root: reconcile and rank actionable findings"]
-    Security --> Summary
-    Database --> Summary
-    Summary --> Result["Present findings, evidence, and limitations"]
-```
-
-The selected reviewers may work in parallel. Review reports findings and recommendations; implementation requires a request to fix them. See [the review workflow](workflows/review.md).
-
-### Security
-
-Map trust boundaries, assess threats, then independently review the findings and test relevant abuse cases.
-
-```mermaid
-flowchart TD
-    Start["Root: define the assessment target"] --> Explorer["Explorer: map paths, data flow, and trust boundaries"]
-    Explorer --> Security["Security: assess threats and propose adversarial scenarios"]
-    Security --> Reviewer["Reviewer: independently check findings and code"]
-    Security --> Tester["Tester: validate abuse cases and failure behavior"]
-    Reviewer --> Summary["Root: reconcile evidence and false positives"]
-    Tester --> Summary
-    Summary --> Result["Present ranked findings, mitigations, and assessment limits"]
-```
-
-Reviewer and tester may work in parallel. Assessment-only testing uses existing checks or disposable reproductions without persistent source or test edits. Isolate any user-requested test changes from the review target. Requested fixes go through implementation and independent validation. See [the security workflow](workflows/security.md).
-
-### Quick
-
-Keep simple changes with the root: typo fixes, small documentation edits, bounded mechanical renames, and obvious configuration corrections.
-
-```mermaid
-flowchart LR
-    Inspect["Root: inspect the relevant context"] --> Edit["Root: apply the scoped change"]
-    Edit --> Verify["Root: verify and report"]
-```
-
-Quick does not spawn subagents. If inspection reveals broader effects or uncertainty, root explains and selects the smallest suitable available workflow. See [the quick workflow](workflows/quick.md).
-
-### Parallel work and file ownership
-
-- Run independent architecture exploration and database analysis together when useful.
-- Give debugger instances different hypotheses so they do not repeat the same investigation.
-- Assign multiple implementers independent areas with disjoint file ownership, such as `internal/payroll/` and `internal/reporting/`.
-- Sequence edits when agents need the same files. Review a stable target, and keep concurrent test writes outside it.
-- Keep testing and review independent of implementation. Root coordinates corrections, rechecks affected work, and respects the runtime's concurrency limits.
-
-Plan Mode remains planning: workflow stages and delegated tasks do not authorize implementation while that mode is active. Existing permission boundaries and repository conventions continue to apply.
-
-## Presets
-
-| Preset | Available agents | Available workflows |
-| --- | --- | --- |
-| `full` (default) | explorer, implementer, database, tester, reviewer, debugger, security | feature, bug, review, security, quick |
-| `minimal` | explorer, implementer, tester, reviewer | feature, bug, quick |
-| `backend` | explorer, implementer, database, tester, reviewer, debugger | feature, bug, review, quick |
-| `security` | explorer, security, reviewer, tester, debugger | security, review, bug, quick |
-
-A preset makes roles available; it does not run them all. Minimal uses the root for uncertain diagnosis because debugger is absent. Security uses the root for implementation because implementer is absent. Other absent specialist stages also fall back to the root.
-
-## Installation details
-
-From this checkout:
+Use `--global` instead of `--target` to make Rig available across projects:
 
 ```bash
-# Preview without changing the project.
-bash bin/agent-rig install --target ../my-project --dry-run
-
-# Install full into the specified project.
-bash bin/agent-rig install --target ../my-project
-
-# Update from this checkout or switch the project's preset.
-bash bin/agent-rig install --target ../my-project --preset backend
-
-# Explicitly replace conflicting Rig content, preserving backups.
-bash bin/agent-rig install --target ../my-project --preset full --replace-modified
-
-bash bin/agent-rig --help
+bin/agent-rig install --provider codex --global --preset backend
+bin/agent-rig install --provider claude --global --preset backend
 ```
 
-Project installation writes:
+| Provider | Global directory | Environment override |
+| --- | --- | --- |
+| Codex | `~/.codex` | `CODEX_HOME` |
+| Claude Code | `~/.claude` | `CLAUDE_CONFIG_DIR` |
+
+Custom directories work in both install and uninstall commands:
+
+```bash
+CODEX_HOME=/path/to/codex-home bin/agent-rig install --provider codex --global
+CLAUDE_CONFIG_DIR=/path/to/claude-home bin/agent-rig install --provider claude --global
+```
+
+`--global` and `--target` are mutually exclusive. A missing global directory is created only when applying an install; a dry run creates no destination files or directories. Global workflow paths are absolute. If you relocate a provider home, rerun installation to refresh them.
+
+When a project and a global Rig installation are both present for the same provider, the Rig instructions select the project's preset, role list, and workflow paths. Repository conventions still govern the work.
+
+## Providers
+
+Both providers expose the same role, workflow, and preset names. Their native files, orchestration instructions, models, and installation state are independent.
+
+| | Codex | Claude Code |
+| --- | --- | --- |
+| Project instructions | `AGENTS.md`, or an active `AGENTS.override.md` | `CLAUDE.md` |
+| Project agents | `.codex/agents/agent_rig_<role>.toml` | `.claude/agents/agent-rig-<role>.md` |
+| Agent format | Native TOML | Native Markdown with YAML frontmatter, rendered from provider templates |
+| Rig state | `.agent-rig/codex/` | `.agent-rig/claude/` |
+| Sources | [providers/codex/](providers/codex/) | [providers/claude/](providers/claude/) |
+
+A project with both installed has this layout:
 
 ```text
 project/
-├── AGENTS.md                       # Marked Rig section, or AGENTS.override.md
+├── AGENTS.md                         # Or active AGENTS.override.md
+├── CLAUDE.md
 ├── .codex/
-│   ├── config.toml                 # Comment-only guidance, created when absent
+│   ├── config.toml                   # Existing settings preserved
 │   └── agents/agent_rig_<role>.toml
+├── .claude/
+│   └── agents/agent-rig-<role>.md
 └── .agent-rig/
-    ├── workflows/<selected-workflow>.md
-    ├── manifest.tsv               # Preset and installed-content checksums
-    └── backups/<unique-run>/      # Previous versions of changed existing files
+    ├── codex/
+    │   ├── workflows/<workflow>.md
+    │   ├── manifest.tsv
+    │   └── backups/<run>/            # Created when existing files change
+    └── claude/
+        ├── workflows/<workflow>.md
+        ├── models/policy.tsv
+        ├── manifest.tsv
+        └── backups/<run>/
 ```
 
-The installer uses a nonempty `AGENTS.override.md` when present; otherwise it uses `AGENTS.md` and leaves an empty or whitespace-only override untouched. If an override becomes active later, the next install moves the managed section there. This applies to both project and global installations, following the [instruction discovery rules](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+Global installations use `agents/` directly inside the selected provider home, along with its instruction file and `.agent-rig/<provider>/` state.
 
-Existing content stays outside the marked Rig section. Updates preserve that surrounding content byte-for-byte, including CRLF line endings. A changed managed section still requires reconciliation or `--replace-modified`, even when the change is only its line endings. Keep repository conventions, build commands, and project-specific requirements outside the section:
+Installing, updating, removing, or rolling back one provider preserves the other provider's files. Each has its own manifest, backups, and install/uninstall lock. Claude does not import Codex instructions, and neither provider consumes the other's model policy.
+
+### Existing configuration
+
+**Codex:** existing project `.codex/config.toml` and global `config.toml` remain byte-for-byte unchanged. If absent, Rig creates comment-only guidance. If your setup disables multi-agent tools and you want Rig delegation, reconcile `enabled = true` in the existing `[agents]` table, or add the table if absent. Avoid duplicate tables. See [configuration guidance](providers/codex/templates/config.toml) and the [Codex subagent reference](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+
+The Codex installer uses a nonempty `AGENTS.override.md` when present; otherwise it uses `AGENTS.md` and leaves empty or whitespace-only overrides untouched. A later install moves the managed section if an override becomes active, preserving surrounding instructions in both files. This applies to project and global installations; see the [instruction discovery reference](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+
+**Claude Code:** Rig preserves settings JSON, permissions, hooks, skills, and memory configuration. Explorer, database, reviewer, and security have only Read, Grep, and Glob tools. Implementer and tester can edit assigned files and execute checks; debugger can run safe checks without editing source. Rig uses native subagents within one root session. See the [Claude subagent reference](https://code.claude.com/docs/en/sub-agents) and [instruction file reference](https://code.claude.com/docs/en/memory).
+
+## Presets
+
+A preset selects which roles and workflows are installed for either provider:
+
+| Preset | Available roles | Available workflows |
+| --- | --- | --- |
+| `minimal` | explorer, implementer, tester, reviewer | feature, bug, quick |
+| `backend` | explorer, implementer, database, tester, reviewer, debugger | feature, bug, review, quick |
+| `security` | explorer, security, reviewer, tester, debugger | security, review, bug, quick |
+| `full` (default) | all seven roles | feature, bug, review, security, quick |
+
+Root handles a stage when its specialist is absent. For example, minimal leaves uncertain diagnosis with root, while security leaves implementation with root. An unavailable review or assessment workflow does not authorize implementation; root adapts the process to the requested outcome.
+
+Definitions are maintained separately in [Codex presets](providers/codex/presets/) and [Claude presets](providers/claude/presets/).
+
+## Workflows
+
+The standalone alias must appear at the beginning of the request, after optional whitespace. Aliases are prompt conventions, not native provider commands. Quoting an alias or mentioning it later does not activate Rig. Activation is evaluated again for every request.
+
+| Alias | Use for | Normal stages |
+| --- | --- | --- |
+| `@feature` | Non-trivial feature development | Explore → root design → implement → independent testing/review → root verification |
+| `@bug` | A failure whose cause needs investigation | Explore → investigate hypotheses → root diagnosis → implement → test → review |
+| `@review` | Existing code or a proposed change | Relevant reviewers → root summary |
+| `@security` | Security assessment | Explore → security analysis → independent review/testing → root summary |
+| `@quick` | Trivial or low-risk changes | Root inspects → edits → verifies |
+
+### Feature
+
+Root decides the design and assigns file ownership before implementation. Database analysis participates only when persistence concerns are relevant.
+
+```mermaid
+flowchart TD
+    Explorer[Explorer] --> Design[Root: decide the design]
+    Database[Database: if relevant] -.-> Design
+    Design --> Implementer[Implementer]
+    Implementer --> Tester[Tester]
+    Implementer --> Reviewer[Reviewer]
+    Tester --> Verify[Root: resolve findings and verify]
+    Reviewer --> Verify
+```
+
+Tester and reviewer may run in parallel once implementation stabilizes, with test writes outside the review target. Accepted fixes and subsequent tests receive affected testing and follow-up review.
+
+Workflow definitions: [Codex feature](providers/codex/workflows/feature.md) · [Claude feature](providers/claude/workflows/feature.md).
+
+### Bug
+
+Establish expected behavior and a reproduction, then investigate discriminating hypotheses before applying a fix.
+
+```mermaid
+flowchart TD
+    Explorer[Explorer] --> A[Debugger A: hypothesis A]
+    Explorer -.-> B[Debugger B: independent hypothesis if useful]
+    A --> Diagnosis[Root: decide the cause and fix]
+    B --> Diagnosis
+    Diagnosis --> Implementer[Implementer]
+    Implementer --> Tester[Tester]
+    Tester --> Reviewer[Reviewer]
+    Reviewer --> Verify[Root: resolve findings and verify]
+```
+
+Debugger A and B are separate instances of the same role. Use a second instance when it adds independent evidence. Root investigates when debugger is absent; an obvious low-risk fix can use quick.
+
+Workflow definitions: [Codex bug](providers/codex/workflows/bug.md) · [Claude bug](providers/claude/workflows/bug.md).
+
+### Review and security
+
+Review examines a stable target and adds security or database expertise only when relevant. Root reconciles evidence and ranks actionable findings. Review and security assessments report findings and recommendations; persistent fixes or test edits require a request for changes.
+
+Security adds independent review and adversarial testing:
+
+```mermaid
+flowchart TD
+    Explorer[Explorer: paths and trust boundaries] --> Security[Security: threats and abuse cases]
+    Security --> Reviewer[Reviewer]
+    Security --> Tester[Tester: adversarial checks]
+    Reviewer --> Summary[Root: reconcile evidence and summarize]
+    Tester --> Summary
+```
+
+Assessment-only testing uses existing checks or disposable reproductions without persistent source edits. Findings are ranked CRITICAL, HIGH, MEDIUM, or LOW and include evidence, impact, and limitations. Agents should state when no meaningful issues are found.
+
+Workflow definitions: [Codex review](providers/codex/workflows/review.md) · [Claude review](providers/claude/workflows/review.md) · [Codex security](providers/codex/workflows/security.md) · [Claude security](providers/claude/workflows/security.md).
+
+### Quick and coordination
+
+Quick stays root-only for typos, small documentation edits, bounded mechanical renames, and obvious configuration corrections. If inspection reveals broader effects or uncertainty, root explains a change to the smallest suitable workflow.
+
+Across workflows, root assigns bounded tasks with context and explicit file ownership. Independent analysis can run in parallel; overlapping edits are sequenced. Testing and review stay independent of implementation. Root reconciles findings, coordinates corrections, and performs final verification within the runtime's concurrency limits.
+
+Plan Mode stays planning, including delegated work. Project conventions, user instructions, and existing permission boundaries continue to apply. Codex nested delegation requires explicit root authorization and a clear benefit; Claude Rig subagents return to root without spawning more agents.
+
+Workflow definitions: [Codex quick](providers/codex/workflows/quick.md) · [Claude quick](providers/claude/workflows/quick.md).
+
+### Specialist roles
+
+| Role | Responsibility | Expected result |
+| --- | --- | --- |
+| explorer | Trace architecture, execution paths, dependencies, and conventions | Relevant files, constraints, risks, and implementation areas |
+| implementer | Carry out the root-approved design within assigned files | Scoped changes, checks, and remaining concerns |
+| database | Analyze schema, SQL, migrations, indexes, transactions, and integrity | Persistence findings, design tradeoffs, and verification recommendations |
+| tester | Independently check requirements, edge cases, regressions, and failures | Test scenarios, commands/results, defects, and coverage gaps |
+| debugger | Investigate one bounded failure hypothesis | Supporting/contradicting evidence, diagnosis, and smallest fix recommendation |
+| reviewer | Independently inspect a stable implementation | Actionable ranked findings, or a clear report of no findings |
+| security | Assess reachable threats, trust boundaries, and abuse cases | Evidence-backed findings, mitigations, and adversarial scenarios |
+
+Agent definitions: [Codex agents](providers/codex/agents/) · [Claude agent templates](providers/claude/agents/).
+
+## Model policies
+
+Model selection belongs to each provider. The user's root model and effort remain unchanged, including for quick. Role defaults apply when a Rig specialist is delegated an activated task; local native overrides are protected on future installs.
+
+### Codex defaults
+
+Codex roles specify `model` and `model_reasoning_effort` in their TOML files:
+
+| Roles | Model | Effort |
+| --- | --- | --- |
+| explorer | `gpt-6-luna` | high |
+| implementer, database, tester | `gpt-6.1-sol` | high |
+| debugger, reviewer, security | `gpt-6-astra` | high |
+
+These are the shipped starting defaults, not per-role benchmark results. Customize the native role files; removing both model and effort keys restores inheritance. See [Codex model policy](providers/codex/models/README.md) and the [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+### Claude defaults
+
+[policy.tsv](providers/claude/models/policy.tsv) centrally defines Claude role tiers, pinned IDs, effort defaults, pricing metadata, and quality targets. Installation renders explicit native model/effort fields into each agent and records a policy copy in `.agent-rig/claude/models/policy.tsv`.
+
+| Tier | Roles | Pinned model | Effort |
+| --- | --- | --- | --- |
+| FAST | explorer | `claude-haiku-4-5-20251001` | omitted; unsupported |
+| BALANCED | implementer, database, tester, debugger | `claude-sonnet-5-5` | medium |
+| STRONG | reviewer, security | `claude-opus-5-5` | high |
+| ESCALATION | exceptional bounded attempts only | `claude-fable-5-1` | high for definitions using this tier |
+
+All presets share this policy. Escalation is an explicit, bounded response to unresolved evidence or high-impact risk, and is absent from normal workflow stages. A native model override does not automatically change the role's effort. Rig does not silently upgrade pins during installation.
+
+The policy was reviewed on October 5, 2026. Its quality thresholds are initial targets; live benchmarks are needed to establish the cheapest reliable model for each role. See [Claude policy details, pricing, and escalation rules](providers/claude/models/README.md) and the [benchmark suite](providers/claude/benchmarks/README.md). Account and runtime restrictions can override requested models; record the actual selection during evaluation.
+
+## Updates and removal
+
+Repeat install from this checkout to update a provider or switch its preset:
+
+```bash
+bin/agent-rig install --provider claude --target /path/to/project --preset backend --dry-run
+bin/agent-rig install --provider claude --target /path/to/project --preset backend
+```
+
+Use `--provider codex` for Codex, or `--global` instead of `--target` for a global installation. **Omitting `--preset` selects full, including on updates.** An unchanged repeat install is a no-op.
+
+### Local edits and backups
+
+The selected provider's manifest records ownership and checksums for managed agents, workflows, instruction sections, and any generated policy. Updates preserve existing configuration and instructions outside Rig sections. Missing managed files are recreated; a removed instruction section remains a protected local change.
+
+| Situation | Behavior |
+| --- | --- |
+| Managed content is unchanged or already matches the new output | Update or adopt the matching content |
+| Managed content has differing local edits, or an unmanaged destination conflicts | Stop before writing; report conflicts |
+| `--replace-modified` is supplied to install | Back up conflicting content and apply replacement or preset removal |
+| Preset drops a previously managed role/workflow | Remove that tracked content, subject to local-edit protection |
+| Markers/manifest are malformed, paths are unsafe, scopes conflict, or destinations are symlinks | Stop; replacement flags do not bypass these checks |
+
+```bash
+bin/agent-rig install --provider claude --target /path/to/project --preset backend --replace-modified
+```
+
+Every existing file changed or deleted is backed up under `.agent-rig/<provider>/backups/<run>/`; the command reports the directory. Install and uninstall stage changes, share the provider's lock, and attempt to restore originals on write failure. Backups are retained; empty directories may remain. Avoid editing destinations during a run. Before removing a leftover `.install-lock`, confirm no operation is running.
+
+### Uninstall
+
+```bash
+# Preview and remove one provider from a project.
+bin/agent-rig uninstall --provider claude --target /path/to/project --dry-run
+bin/agent-rig uninstall --provider claude --target /path/to/project
+
+# Remove Codex from its global directory.
+bin/agent-rig uninstall --provider codex --global
+
+# Back up and remove locally customized Rig content explicitly.
+bin/agent-rig uninstall --provider claude --target /path/to/project --remove-modified
+```
+
+Uninstall removes recorded managed files, the marked instruction section, and the manifest. It preserves instructions outside the section byte-for-byte, unrelated files, configuration, and backup history. Empty instruction files and directories may remain. Additional Codex Rig sections in the other instruction file require explicit removal through `--remove-modified`.
+
+Already missing managed content is accepted. Without a manifest, uninstall leaves the destination untouched rather than guessing ownership. A missing global directory is not created by removal. Removing a project installation leaves its global installation intact, and removing one provider leaves the other intact. Start a new provider session afterward.
+
+`--replace-modified` is for install; `--remove-modified` is for uninstall. Run `bin/agent-rig --help` for the complete command options.
+
+### Legacy Codex migration
+
+An existing `.agent-rig/manifest.tsv` identifies a legacy Codex installation. The next Codex install validates recorded ownership and local edits, moves tracked workflows to `.agent-rig/codex/workflows/`, refreshes instruction paths, and replaces the old manifest with `.agent-rig/codex/manifest.tsv`. Earlier managed generic role names are migrated to the `agent_rig_` namespace.
+
+Changed or removed files are backed up in the new Codex backup directory. Old `.agent-rig/backups/` history and untracked content stay in place. A dry run previews migration without writing; local edits remain protected. Migration takes both the legacy and new Codex locks. If both manifests exist, reconcile them manually before proceeding.
+
+Codex uninstall can remove legacy state directly. Claude operations leave that state untouched. If an older Rig installation enabled multi-agent tools in Codex configuration, remove that setting manually when you prefer inherited settings; the installer preserves existing configuration.
+
+## Customization
+
+Keep repository conventions and project-specific requirements outside the Rig markers in `AGENTS.md`, the active `AGENTS.override.md`, or `CLAUDE.md`:
 
 ```markdown
 # Project instructions
 
-Run the project's existing test command. Follow its API conventions.
+Run the project's test command. Follow its API conventions.
 
 <!-- agent-rig:begin -->
-...installed orchestration instructions...
+...installed Rig instructions...
 <!-- agent-rig:end -->
 
-Additional project instructions can also go here.
+Additional project instructions can go here.
 ```
 
-Project workflow paths are relative to the directory containing the installed Rig section, so they also work when Codex starts in a project subdirectory.
+Updates preserve content outside the managed section byte-for-byte, including CRLF line endings. Edits inside the section, even line-ending changes, remain protected local modifications. Relative project workflow paths resolve against the file containing the Rig section, including when a session starts in a project subdirectory.
 
-## Global installation
+Edit installed native agents and workflows to customize one project or global setup. For Claude model overrides, edit native frontmatter; editing the installed policy copy alone does not re-render agents. Change provider source assets to set defaults for future installs. Claude source agents contain model/effort placeholders and must be rendered by installation before use.
 
-```bash
-# Preview the global installation.
-bash bin/agent-rig install --global --preset backend --dry-run
+Commit installed instructions, agents, workflows, policy copies, and manifests when teammates should share the setup. Keep backups and temporary locks out of project version control, for example:
 
-# Install or update the global preset.
-bash bin/agent-rig install --global --preset backend
-
-# Use a custom Codex home.
-CODEX_HOME=/path/to/codex-home bash bin/agent-rig install --global --preset full
+```gitignore
+.agent-rig/*/backups/
+.agent-rig/*/.install-lock/
 ```
 
-`--global` installs into `${CODEX_HOME:-$HOME/.codex}`, the Codex configuration directory. It is mutually exclusive with `--target`. A missing Codex home is created when applying an installation; `--dry-run` creates no destination files or directories. Presets, updates, backups, local-edit protection, and `--replace-modified` work in both scopes. The manifest records the scope to prevent accidentally mixing project and global layouts in one destination. Existing project manifests without a scope field remain compatible.
+The installer does not edit the target project's `.gitignore`. Keep legacy backup history ignored too if that project has an older installation.
+
+## Development
+
+Provider-specific implementation lives under separate source trees:
 
 ```text
-codex-home/                         # Usually ~/.codex
-├── AGENTS.md                       # Or active AGENTS.override.md
-├── config.toml                     # Existing configuration preserved
-├── agents/agent_rig_<role>.toml
-└── .agent-rig/
-    ├── workflows/<selected-workflow>.md
-    ├── manifest.tsv
-    └── backups/<unique-run>/
+bin/agent-rig                         # Shared installation lifecycle
+providers/
+├── codex/{agents,workflows,presets,templates,models}/
+└── claude/{agents,workflows,presets,templates,models,benchmarks}/
+tests/
+├── codex/
+└── claude/
 ```
 
-Codex reads a nonempty global `AGENTS.override.md` before `AGENTS.md`, so the installer adds the managed section to that override when it contains instructions. Otherwise it uses `AGENTS.md` and leaves an empty or whitespace-only override untouched. If an override becomes active after installation, the next install moves the managed section there and preserves surrounding content in both files. Removing or editing a previously managed section remains a protected change; use `--replace-modified` after reconciling it. These paths follow the [official instruction discovery rules](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+Each trusted `provider.sh` adapter owns native paths, rendering, instruction discovery, configuration handling, and ownership patterns. Core manages provider selection, presets, conflict handling, manifests, backups, locks, and rollback without parsing native agent syntax. Provider validators check their own formats.
 
-Global instructions list absolute workflow paths so Codex can read them from any repository. Rig remains opt-in: unprefixed requests use your existing setup. Repository instructions continue to govern project conventions; when a project also has an Agent Rig installation, its preset and workflow paths take precedence for that project. Start a new Codex session after installation. If you relocate a Codex home, rerun the installer to refresh its absolute workflow paths.
+### Automated checks
 
-## Uninstall
-
-From this checkout, remove Rig from a project or your Codex home:
-
-```bash
-bin/agent-rig uninstall --target /path/to/project
-bin/agent-rig uninstall --global
-```
-
-Project removal requires an existing `--target`. Global removal uses `${CODEX_HOME:-$HOME/.codex}`, just like installation. Removing a project installation leaves your global installation intact, and removing the global installation leaves project installations intact. Start a new Codex session afterward to reload the updated setup.
-
-The command removes roles and workflows recorded in `.agent-rig/manifest.tsv`, strips the marked Rig section from its recorded `AGENTS.md` or `AGENTS.override.md`, and removes the manifest. It preserves Codex configuration, instructions outside Rig sections byte-for-byte, unrelated agents and workflows, and backup history. Generated comment-only configuration is kept too. Empty instruction files and directories may remain.
-
-```bash
-# Preview removals without changing any destination files.
-bin/agent-rig uninstall --target /path/to/project --dry-run
-bin/agent-rig uninstall --global --dry-run
-
-# Explicitly remove locally customized Rig content, keeping backups.
-bin/agent-rig uninstall --target /path/to/project --remove-modified
-bin/agent-rig uninstall --global --remove-modified
-
-# Remove Rig from a custom Codex home.
-CODEX_HOME=/path/to/codex-home bin/agent-rig uninstall --global
-```
-
-Removal stops before writing when a recorded role, workflow, or instruction section has local edits. Reconcile those changes, or use `--remove-modified` to back them up and remove them. Additional Rig-marked sections in the other instruction file also require that flag. Every existing file changed or deleted is saved under `.agent-rig/backups/<unique-run>/`; the command reports that directory. `--remove-modified` is for uninstall, while `--replace-modified` and `--preset` are for install.
-
-Already missing managed files or sections are accepted. Without a manifest, removal reports that no files were removed and leaves the destination untouched, including any untracked Rig copies. Restore a known-good manifest from your backups to recover recorded ownership, or remove those untracked copies manually. Invalid manifests, malformed markers, scope mismatches, and destination symlinks stop removal even with `--remove-modified`. Uninstall shares the install lock and attempts to restore changed files if an operation fails.
-
-## Codex configuration
-
-Existing project `.codex/config.toml` and global `config.toml` remain byte-for-byte unchanged, including on updates and explicit replacements. When absent, the installer creates comment-only guidance, with no active settings that could override the user's configuration. Current Codex discovers standalone project agents in `.codex/agents/` and global agents in the Codex home's `agents/`. If you want Rig workflows and an existing configuration disables multi-agent tools, reconcile it manually: set `enabled = true` in its existing `[agents]` table, or add the table when absent. Avoid duplicate TOML tables. The root's model, reasoning effort, and concurrency settings stay under the user's control; Rig role files specify their own model and effort.
-
-Rig agents use names such as `agent_rig_explorer` and `agent_rig_reviewer` so they do not shadow built-in or existing user roles named `explorer` or `reviewer`. Source filenames and preset entries retain the logical names, such as `agents/explorer.toml`; the installed filename matches the namespaced Codex name.
-
-Use a current local Codex release supporting standalone agent TOML discovery. This setup follows the [official subagent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents); older releases that require explicit role registration need manual adaptation. Begin a new Codex session after installation and trust the target's project configuration when prompted. Agent Rig cannot override session permissions, disabled tools, or higher-priority instructions.
-
-## Role models and reasoning
-
-Each Rig role pins `model` and `model_reasoning_effort` in its agent TOML file:
-
-| Role | Model | Effort | Selection rationale |
-| --- | --- | --- | --- |
-| explorer | `gpt-6-luna` | `high` | Efficient repository exploration with bounded responsibilities |
-| implementer | `gpt-6.1-sol` | `high` | Strong multi-step coding at a practical cost |
-| database | `gpt-6.1-sol` | `high` | Schema, transaction, and migration reasoning |
-| tester | `gpt-6.1-sol` | `high` | Independent edge cases, regressions, and test authoring |
-| debugger | `gpt-6-astra` | `high` | Ambiguous causes and competing hypotheses |
-| reviewer | `gpt-6-astra` | `high` | Independent judgment about subtle defects |
-| security | `gpt-6-astra` | `high` | Adversarial reasoning and trust boundaries |
-
-These are Agent Rig's recommended starting defaults, selected on October 4, 2026 from the [official model-selection guidance](https://developers.openai.com/api/docs/guides/model-selection): Luna for focused work, Sol for complex work with cost considerations, and Astra for demanding reasoning. The role assignments are our judgment, not per-role benchmarks. `high` gives specialists room to trace logic and check assumptions without defaulting every delegation to `xhigh` or `max`; compare those higher efforts on representative tasks before adopting them. The [subagent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents) explains model settings and their precedence.
-
-The root keeps the model and effort chosen in the user's existing setup, including for `@quick`. These role settings apply when a namespaced Rig role is spawned for an activated workflow. Requests without a workflow alias continue to use the existing setup. Multiple instances of a role use the same role configuration, including explicitly authorized nested subagents.
-
-Models must be available to the account and client using the target project; configuration validation does not confirm account access. To use another model, edit that role's `model` and `model_reasoning_effort` together. Removing both keys restores inheritance. Local changes remain protected during updates.
-
-## Customization and conflicts
-
-Sources live in `agents/`, `workflows/`, `presets/`, and `templates/`. Presets list shared definitions rather than duplicating them. Edit sources here to change defaults for future installations, or edit installed copies to customize one project or your global setup. Per-role models and efforts can be changed in the installed TOML files; supported settings are documented in the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
-
-The manifest records checksums for installed roles, workflows, and the marked instruction section. Identical unmanaged copies can be adopted. If an installed file or section already matches the current source, an update refreshes its manifest entry without replacing that content. Changed existing files are backed up before replacement. A repeat install stops before writing if it finds differing local edits or unmanaged destinations; reconcile them manually or use `--replace-modified`. That option replaces conflicting selected content and removes conflicting obsolete managed files when switching presets, with backups. It still preserves existing Codex configuration and instructions outside the section.
-
-Preset switches remove only previously managed roles and workflows no longer selected. Manifest agent paths are limited to Rig's namespace and recognized legacy project role names. Unrelated project files remain. Missing managed files are recreated; a removed instruction section is treated as a protected local edit. Malformed markers, unsafe manifest paths, and destination symlinks require manual reconciliation and cannot be overridden by the replacement flag.
-
-Updates from an earlier install migrate unchanged managed roles to the `agent_rig_` namespace, backing up the previous files; modified roles remain protected. Existing Codex configuration is still preserved. If an earlier Rig install created an active `[agents] enabled = true` setting, remove that setting manually when you prefer to inherit the user's configuration instead.
-
-Commit the installed instruction, agent, workflow, and manifest files if you want teammates to share the setup. Backup files are local history; add `.agent-rig/backups/` and `.agent-rig/.install-lock/` to the target project's ignore rules yourself if desired. The installer does not edit the project's `.gitignore`.
-
-Install and uninstall stage and check changes before writing, use a shared lock during application, and attempt to restore originals on a write failure. Writes use temporary files. Backups are retained, and newly created empty directories can remain after failure. Avoid editing installation destinations during a run. A leftover `.agent-rig/.install-lock` after a terminated process requires confirming no install or uninstall is running before removing the lock. This is a local copy tool, not a synchronization service or a transactional filesystem.
-
-## Verification
-
-Check the entire project with one command:
+Development checks require Make and Python 3.11+:
 
 ```bash
 make check
 ```
 
-Development checks require Make and Python 3.11+ for TOML validation. Install and uninstall still use only Bash and standard Unix utilities. You can also run the checks individually:
+The suite validates native agent output, presets, references, Markdown links/fences, and source formatting. Disposable project and global fixtures cover installation, updates, removal, coexistence, legacy migration, protected edits, model policy rendering, preserved instruction bytes, unsafe-path rejection, locks, and injected failures that exercise rollback. It does not change your actual provider installations or call models.
+
+To run checks individually:
 
 ```bash
-for script in bin/agent-rig tests/*.sh; do bash -n "$script" || exit 1; done
 python3 tests/validate.py
-bash tests/install.sh
-bash tests/uninstall.sh
+bash tests/codex/install.sh
+bash tests/codex/uninstall.sh
+bash tests/codex/migration.sh
+bash tests/claude/install.sh
+bash tests/claude/models.sh
+python3 providers/claude/benchmarks/evaluate.py --check
+python3 tests/claude/benchmarks.py
 ```
 
-The source checker validates agent TOML fields, names and model settings, preset memberships and references, the complete full preset, inherited configuration, Markdown fences and local links, and source formatting. It validates configuration structure without contacting model services or checking account access.
+### Runtime smoke checks and benchmarks
 
-Installer tests use disposable projects, Codex homes, and source fixtures under the temporary directory, without changing your actual Codex installation. They cover every preset in both scopes, opt-in instructions, namespace isolation and migration, inherited configuration, updates, preset switching, preserved content and CRLF markers, collision handling, protected local edits, backups, dry runs, symlink/manifest rejection, locking, and simulated mid-install write failures. Both scopes cover override discovery and transitions. Global cases also cover `CODEX_HOME`, the `HOME/.codex` fallback, absolute workflow paths, and scope conflicts.
-
-Uninstall tests also use disposable destinations. They cover all presets in both scopes, exact preservation of user files and instruction bytes, local-edit protection and explicit removal, backup history, repeat removal and reinstallation, override files, missing content, legacy manifests, absent source templates, unsafe paths, locks, and simulated mid-uninstall failures that must restore deleted files and their permissions.
-
-For a Codex smoke check, install `minimal` into a disposable project, open a new Codex session there, and ask:
+Install minimal into a disposable project, start a new authenticated provider session, and request exploration without edits:
 
 ```text
 @feature Explore this repository and propose a feature plan without edits.
-Spawn agent_rig_explorer to identify the relevant project files. Report which
-Rig roles and workflows are available and wait for its findings.
+Use the installed Rig explorer to identify relevant files, report available
+roles and workflows, and wait for its findings.
 ```
 
-Confirm the namespaced explorer is available and returns its structured report. Then try `@quick` on a small documentation change and confirm it stays root-only. In a new request without a prefix, ask to explain the project entrypoint and confirm the user's existing process applies without reading Rig workflows or spawning Rig roles. If tools are unavailable, inspect existing configuration and session restrictions; the installer does not launch model sessions itself.
+Confirm the namespaced explorer runs and returns evidence. Try quick on a documentation change and confirm root handles it alone. Then make an unprefixed request and confirm the existing process applies. For Claude, also try a small feature with independent testing and review; inspect agent definitions through `/agents` or ask the session to list them. Repeat with a nested working directory and a global installation when applicable.
+
+Automated checks validate configuration and lifecycle behavior; authenticated sessions verify real delegation and model access. The [Claude benchmark guide](providers/claude/benchmarks/README.md) describes seven seeded role tasks, independent grading, and reporting for latency, tool reliability, cache-aware costs, retries, failed workflows, and root verification. Passing offline checks does not establish live model quality.

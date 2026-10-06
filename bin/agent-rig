@@ -9,6 +9,7 @@ END_MARKER='<!-- agent-rig:end -->'
 RIG_ROOT=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 stage=''
 lock_owned=0
+legacy_lock_owned=0
 applying=0
 committed=0
 keep_stage=0
@@ -16,9 +17,9 @@ target=''
 operation=''
 global_install=0
 install_scope=project
-agent_directory=.codex/agents
-config_path=.codex/config.toml
-instructions_file=AGENTS.md
+provider=codex
+state_directory=''
+legacy_manifest=''
 preset=full
 dry_run=0
 allow_modified=0
@@ -31,7 +32,8 @@ Usage: bash bin/agent-rig install --target DIRECTORY [options]
        bash bin/agent-rig uninstall --target DIRECTORY [options]
        bash bin/agent-rig uninstall --global [options]
 
-  --global             Use CODEX_HOME, or ~/.codex when unset
+  --provider NAME      codex (default) or claude
+  --global             Codex: CODEX_HOME or ~/.codex; Claude: CLAUDE_CONFIG_DIR or ~/.claude
   --preset NAME        Install full (default), minimal, backend, or security
   --dry-run            Show changes without writing to the target
   --replace-modified   Install: replace conflicting Rig content with backups
@@ -39,11 +41,11 @@ Usage: bash bin/agent-rig install --target DIRECTORY [options]
   --help               Show this help
 
 --global and --target are mutually exclusive. Project targets must already
-exist; a missing Codex home is created only when applying a global install.
+exist; a missing provider home is created only when applying a global install.
 Omitting --preset installs full. Project installation requires --target.
-Existing Codex configuration is preserved. Repeat the command to update an
+Existing provider configuration is preserved. Repeat the command to update an
 installation or switch presets. Uninstall uses the recorded manifest and keeps
-Codex configuration, surrounding instructions, and backups. Rig remains opt-in
+provider configuration, surrounding instructions, and backups. Rig remains opt-in
 through workflow aliases.
 EOF
 }
@@ -114,7 +116,8 @@ cleanup() {
     if [ -n "$stage" ] && [ -f "$stage/temp-paths" ]; then
         while IFS= read -r tmp; do rm -f "$tmp"; done < "$stage/temp-paths"
     fi
-    if [ "$lock_owned" -eq 1 ]; then rmdir "$target/.agent-rig/.install-lock"; fi
+    if [ "$lock_owned" -eq 1 ]; then rmdir "$target/$state_directory/.install-lock"; fi
+    if [ "$legacy_lock_owned" -eq 1 ]; then rmdir "$target/$legacy_lock_path"; fi
     if [ -n "$stage" ] && [ "$keep_stage" -eq 0 ]; then rm -rf "$stage"; fi
     exit "$result"
 }
@@ -130,12 +133,13 @@ case $1 in
 esac
 while [ "$#" -gt 0 ]; do
     case $1 in
-        --target|--preset)
+        --target|--preset|--provider)
             [ "$#" -ge 2 ] || die "Missing value for $1"
             [ -n "$2" ] || die "Empty value for $1"
             case $2 in --*) die "Missing value for $1 before $2" ;; esac
             case $1 in
                 --target) target=$2 ;;
+                --provider) provider=$2 ;;
                 --preset)
                     [ "$operation" = install ] || die '--preset is only supported by install'
                     preset=$2 ;;
@@ -153,20 +157,19 @@ while [ "$#" -gt 0 ]; do
         *) die "Unknown option: $1" ;;
     esac
 done
+case $provider in codex|claude) ;; *) die "Unknown provider: $provider" ;; esac
+PROVIDER_ROOT=$RIG_ROOT/providers/$provider
+# Only trusted source adapters are sourced; destination data is never evaluated.
+source "$PROVIDER_ROOT/provider.sh"
+state_directory=.agent-rig/$provider
 if [ "$global_install" -eq 1 ]; then
     [ -z "$target" ] || die '--global and --target are mutually exclusive'
     install_scope=global
-    agent_directory=agents
-    config_path=config.toml
-    if [ -n "${CODEX_HOME:-}" ]; then
-        target=$CODEX_HOME
-    else
-        [ -n "${HOME:-}" ] || die 'HOME is required when CODEX_HOME is not set'
-        target=$HOME/.codex
-    fi
+    provider_global_target
 else
     [ -n "$target" ] || die '--target or --global is required'
 fi
+provider_paths
 case $preset in minimal|backend|security|full) ;; *) die "Unknown preset: $preset" ;; esac
 while [ "$target" != / ] && [ "${target%/}" != "$target" ]; do target=${target%/}; done
 case $target in *"$(printf '\t')"*|*$'\n'*) die 'Target paths cannot contain tabs or newlines' ;; esac
@@ -174,7 +177,7 @@ case $target in *"$(printf '\t')"*|*$'\n'*) die 'Target paths cannot contain tab
 if [ -d "$target" ]; then
     target=$(CDPATH= cd -- "$target" && pwd -P)
 elif [ "$global_install" -eq 1 ]; then
-    # Resolve a missing Codex home without creating directories during preflight.
+    # Resolve a missing provider home without creating directories during preflight.
     ancestor=$target
     suffix=''
     while [ ! -d "$ancestor" ]; do
@@ -219,57 +222,69 @@ if [ "$operation" = install ]; then
                 ;;
             *) die "Invalid preset line: $line" ;;
         esac
-    done < "$RIG_ROOT/presets/$preset.preset"
+    done < "$PROVIDER_ROOT/presets/$preset.preset"
     [ -n "$agents" ] && [ -n "$workflows" ] || die 'Preset must list agents and workflows'
     seen=' '
     for role in $agents; do
         case $role in ''|*[!a-z_]*) die "Invalid agent name: $role" ;; esac
         case $seen in *" $role "*) die "Duplicate agent: $role" ;; esac
         seen=$seen$role' '
-        [ -f "$RIG_ROOT/agents/$role.toml" ] || die "Missing agent: $role"
+        [ -f "$PROVIDER_ROOT/agents/$role.$agent_extension" ] || die "Missing agent: $role"
     done
     seen=' '
     for workflow in $workflows; do
         case $workflow in ''|*[!a-z_]*) die "Invalid workflow name: $workflow" ;; esac
         case $seen in *" $workflow "*) die "Duplicate workflow: $workflow" ;; esac
         seen=$seen$workflow' '
-        [ -f "$RIG_ROOT/workflows/$workflow.md" ] || die "Missing workflow: $workflow"
+        [ -f "$PROVIDER_ROOT/workflows/$workflow.md" ] || die "Missing workflow: $workflow"
     done
 fi
 
-check_path .agent-rig/manifest.tsv
-check_path .agent-rig/backups dir
-check_path .agent-rig/.install-lock dir
-snapshot .agent-rig/manifest.tsv
-if [ -f "$target/.agent-rig/manifest.tsv" ]; then
-    # Validate before trusting paths or fingerprints; no shell evaluation.
-    awk -F '\t' '
+check_path "$state_directory/manifest.tsv"
+check_path "$state_directory/backups" dir
+check_path "$state_directory/.install-lock" dir
+manifest_path=$state_directory/manifest.tsv
+# Codex alone recognizes the pre-provider layout. Keep legacy backups in place.
+if [ -n "$legacy_manifest_candidate" ]; then
+    check_path "$legacy_manifest_candidate"
+    snapshot "$legacy_manifest_candidate"
+    if [ -f "$target/$legacy_manifest_candidate" ]; then
+        [ ! -f "$target/$manifest_path" ] || die "Both legacy and provider manifests exist; reconcile $provider_label state manually"
+        check_path "$legacy_lock_path" dir
+        legacy_manifest=$legacy_manifest_candidate
+        if [ "$operation" = uninstall ]; then manifest_path=$legacy_manifest; fi
+    fi
+fi
+snapshot "$manifest_path"
+read_manifest=${legacy_manifest:-$manifest_path}
+if [ -f "$target/$read_manifest" ]; then
+    # Providers define owned paths; core validates lifecycle records and checksums.
+    previous_scope=$(awk -F '\t' '$1 == "scope" { print $2 }' "$target/$read_manifest")
+    case ${previous_scope:-project} in
+        project|global) [ "${previous_scope:-project}" = "$install_scope" ] || die 'Installation scope differs from the manifest; use the original --global or --target mode' ;;
+    esac
+    provider_manifest_patterns
+    awk -F '\t' -v provider="$provider" -v files="$manifest_files" -v blocks="$manifest_blocks" '
         NR == 1 { if (NF != 2 || $1 != "agent-rig-manifest" || $2 != "1") exit 1; next }
+        $1 == "provider" { if (NF != 2 || $2 != provider || ++providers > 1) exit 1; next }
         $1 == "preset" { if (NF != 2 || $2 !~ /^(minimal|backend|security|full)$/ || ++presets > 1) exit 1; next }
         $1 == "scope" { if (NF != 2 || $2 !~ /^(project|global)$/ || ++scopes > 1) exit 1; scope = $2; next }
         $1 == "file" || $1 == "block" {
             if (NF != 4 || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ || seen[$2]++) exit 1
-            if ($1 == "file") {
-                if ($2 ~ /^\.codex\/agents\/(agent_rig_[a-z_]+|explorer|implementer|database|tester|reviewer|debugger|security)\.toml$/) project_paths++
-                else if ($2 ~ /^agents\/agent_rig_[a-z_]+\.toml$/) global_paths++
-                else if ($2 !~ /^\.agent-rig\/workflows\/[a-z_]+\.md$/) exit 1
-            }
-            if ($1 == "block" && ($2 !~ /^AGENTS(\.override)?\.md$/ || ++blocks > 1)) exit 1
+            if ($1 == "file" && $2 !~ files) exit 1
+            if ($1 == "block" && ($2 !~ blocks || ++block_count > 1)) exit 1
             next
         }
         { exit 1 }
-        END {
-            if (presets != 1 || blocks != 1) exit 1
-            if ((scope == "global" && project_paths) || (scope != "global" && global_paths)) exit 1
-        }
-    ' "$target/.agent-rig/manifest.tsv" || die 'Invalid install manifest; reconcile .agent-rig/manifest.tsv manually'
-    cp "$target/.agent-rig/manifest.tsv" "$stage/old-manifest.tsv"
+        END { if (presets != 1 || block_count != 1) exit 1 }
+    ' "$target/$read_manifest" || die "Invalid install manifest; reconcile $read_manifest manually"
+    cp "$target/$read_manifest" "$stage/old-manifest.tsv"
     previous_scope=$(awk -F '\t' '$1 == "scope" { print $2 }' "$stage/old-manifest.tsv")
     [ "${previous_scope:-project}" = "$install_scope" ] || die 'Installation scope differs from the manifest; use the original --global or --target mode'
 else
     : > "$stage/old-manifest.tsv"
     if [ "$operation" = uninstall ]; then
-        printf 'No install manifest found at %s/.agent-rig/manifest.tsv; no files removed.\n' "$target"
+        printf 'No install manifest found at %s/%s; no files removed.\n' "$target" "$manifest_path"
         exit 0
     fi
 fi
@@ -293,7 +308,7 @@ prepare_managed_file() {
     local source=$1 rel=$2 previous current crc bytes
     snapshot "$rel"
     mkdir -p "$stage/new/$(dirname -- "$rel")"
-    cp "$source" "$stage/new/$rel"
+    provider_render_file "$source" "$stage/new/$rel"
     if [ -f "$target/$rel" ]; then
         previous=$(old_checksum file "$rel")
         current=$(checksum "$target/$rel")
@@ -301,7 +316,7 @@ prepare_managed_file() {
             if [ "$current" != "$previous" ] && ! cmp -s "$stage/new/$rel" "$target/$rel"; then
                 conflict "$rel (locally modified)"
             fi
-        elif ! cmp -s "$source" "$target/$rel"; then
+        elif ! cmp -s "$stage/new/$rel" "$target/$rel"; then
             conflict "$rel (unmanaged destination collision)"
         fi
     fi
@@ -312,16 +327,13 @@ prepare_managed_file() {
 }
 
 if [ "$operation" = install ]; then
-    printf 'agent-rig-manifest\t1\npreset\t%s\nscope\t%s\n' "$preset" "$install_scope" > "$stage/new-manifest.tsv"
-    for role in $agents; do prepare_managed_file "$RIG_ROOT/agents/$role.toml" "$agent_directory/agent_rig_$role.toml"; done
-    for workflow in $workflows; do prepare_managed_file "$RIG_ROOT/workflows/$workflow.md" ".agent-rig/workflows/$workflow.md"; done
+    provider_prepare_install
+    printf 'agent-rig-manifest\t1\nprovider\t%s\npreset\t%s\nscope\t%s\n' "$provider" "$preset" "$install_scope" > "$stage/new-manifest.tsv"
+    for role in $agents; do prepare_managed_file "$PROVIDER_ROOT/agents/$role.$agent_extension" "$agent_directory/$agent_prefix$role.$agent_extension"; done
+    for workflow in $workflows; do prepare_managed_file "$PROVIDER_ROOT/workflows/$workflow.md" "$state_directory/workflows/$workflow.md"; done
+    provider_extra_files
 
-    # Snapshot both candidates before choosing the file Codex will actually read.
-    snapshot AGENTS.md
-    snapshot AGENTS.override.md
-    if [ -s "$target/AGENTS.override.md" ] && grep -q '[^[:space:]]' "$target/AGENTS.override.md"; then
-        instructions_file=AGENTS.override.md
-    fi
+    provider_choose_instructions
 
     # Retire only files listed by our previous installation.
     while IFS="$(printf '\t')" read -r kind rel crc bytes; do
@@ -336,16 +348,16 @@ if [ "$operation" = install ]; then
 
     {
         printf '%s\n# Agent Rig\n\n' "$BEGIN_MARKER"
-        cat "$RIG_ROOT/templates/AGENTS.md"
+        provider_render_instructions
         printf '\n## Installed preset (active Rig requests only)\n\nInstalled preset: **%s**.\nInstallation scope: **%s**.\n\n' "$preset" "$install_scope"
-        printf 'Available Rig roles and their Codex agent names:\n\n'
-        for role in $agents; do printf -- '- %s: `agent_rig_%s`\n' "$role" "$role"; done
+        printf 'Available Rig roles and their %s agent names:\n\n' "$provider_label"
+        for role in $agents; do printf -- '- %s: `%s%s`\n' "$role" "$agent_prefix" "$role"; done
         printf '\nAvailable workflows:\n\n'
         for workflow in $workflows; do
             if [ "$global_install" -eq 1 ]; then
-                printf -- '- `@%s`: `%s/.agent-rig/workflows/%s.md`\n' "$workflow" "$target" "$workflow"
+                printf -- '- `@%s`: `%s/%s/workflows/%s.md`\n' "$workflow" "$target" "$state_directory" "$workflow"
             else
-                printf -- '- `@%s`: [.agent-rig/workflows/%s.md](.agent-rig/workflows/%s.md)\n' "$workflow" "$workflow" "$workflow"
+                printf -- '- `@%s`: [%s/workflows/%s.md](%s/workflows/%s.md)\n' "$workflow" "$state_directory" "$workflow" "$state_directory" "$workflow"
             fi
         done
         printf '\n%s\n' "$END_MARKER"
@@ -423,14 +435,14 @@ if [ "$operation" = uninstall ]; then
     : > "$stage/empty-block"
     prepare_instruction_file "$previous_instructions" "$stage/empty-block" 0
     # Protect additional Rig-marked sections rather than silently leaving them active.
-    for rel in AGENTS.md AGENTS.override.md; do
+    for rel in $instruction_candidates; do
         [ "$rel" != "$previous_instructions" ] || continue
         snapshot "$rel"
         if [ -f "$target/$rel" ] && { grep -Fq -- "$BEGIN_MARKER" "$target/$rel" || grep -Fq -- "$END_MARKER" "$target/$rel"; }; then
             prepare_instruction_file "$rel" "$stage/empty-block" 0
         fi
     done
-    printf 'delete\t.agent-rig/manifest.tsv\n' >> "$stage/operations.tsv"
+    printf 'delete\t%s\n' "$manifest_path" >> "$stage/operations.tsv"
 else
     if [ -n "$previous_instructions" ] && [ "$previous_instructions" != "$instructions_file" ]; then
         : > "$stage/empty-block"
@@ -440,16 +452,13 @@ else
     read -r crc bytes < <(checksum "$stage/block")
     printf 'block\t%s\t%s\t%s\n' "$instructions_file" "$crc" "$bytes" >> "$stage/new-manifest.tsv"
 
-    snapshot "$config_path"
-    if [ -f "$target/$config_path" ]; then
-        config_preserved=1
-    else
-        mkdir -p "$stage/new/$(dirname -- "$config_path")"
-        cp "$RIG_ROOT/templates/config.toml" "$stage/new/$config_path"
-        plan_write "$config_path"
+    provider_prepare_config
+    mkdir -p "$stage/new/$state_directory"
+    cp "$stage/new-manifest.tsv" "$stage/new/$manifest_path"
+    plan_write "$manifest_path"
+    if [ -n "$legacy_manifest" ]; then
+        printf 'delete\t%s\n' "$legacy_manifest" >> "$stage/operations.tsv"
     fi
-    cp "$stage/new-manifest.tsv" "$stage/new/.agent-rig/manifest.tsv"
-    plan_write .agent-rig/manifest.tsv
 fi
 
 if [ -s "$stage/conflicts" ]; then
@@ -463,9 +472,9 @@ if [ -s "$stage/conflicts" ]; then
 fi
 
 if [ "$operation" = uninstall ]; then
-    printf 'Agent Rig uninstall: %s -> %s\n' "$install_scope" "$target"
+    printf 'Agent Rig %s uninstall: %s -> %s\n' "$provider" "$install_scope" "$target"
 else
-    printf 'Agent Rig: %s -> %s\n' "$preset" "$target"
+    printf 'Agent Rig %s: %s -> %s\n' "$provider" "$preset" "$target"
 fi
 if [ ! -s "$stage/operations.tsv" ]; then
     printf 'Already up to date.\n'
@@ -477,13 +486,19 @@ if [ "$dry_run" -eq 1 ]; then
     printf 'Dry run: no target files changed.\n'
 elif [ -s "$stage/operations.tsv" ]; then
     check_path .agent-rig dir
-    check_path .agent-rig/backups dir
-    check_path .agent-rig/.install-lock dir
-    mkdir -p "$target/.agent-rig"
-    if ! mkdir "$target/.agent-rig/.install-lock" 2>/dev/null; then
-        die 'Another Agent Rig operation holds .agent-rig/.install-lock; remove a stale lock only after confirming no install or uninstall is running'
+    check_path "$state_directory/backups" dir
+    check_path "$state_directory/.install-lock" dir
+    mkdir -p "$target/$state_directory"
+    if ! mkdir "$target/$state_directory/.install-lock" 2>/dev/null; then
+        die "Another Agent Rig operation holds $state_directory/.install-lock; remove a stale lock only after confirming no install or uninstall is running"
     fi
     lock_owned=1
+    if [ -n "$legacy_manifest" ]; then
+        if ! mkdir "$target/$legacy_lock_path" 2>/dev/null; then
+            die "Another Agent Rig operation holds the legacy $legacy_lock_path"
+        fi
+        legacy_lock_owned=1
+    fi
     # Recheck preflight snapshots after taking the lock, including preserved config.
     while IFS="$(printf '\t')" read -r rel expected; do
         check_path "$rel"
@@ -495,8 +510,8 @@ elif [ -s "$stage/operations.tsv" ]; then
             mkdir -p "$stage/originals/$(dirname -- "$rel")"
             cp -p "$target/$rel" "$stage/originals/$rel"
             if [ -z "$backup_dir" ]; then
-                mkdir -p "$target/.agent-rig/backups"
-                backup_dir=$(mktemp -d "$target/.agent-rig/backups/$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
+                mkdir -p "$target/$state_directory/backups"
+                backup_dir=$(mktemp -d "$target/$state_directory/backups/$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
             fi
             mkdir -p "$backup_dir/$(dirname -- "$rel")"
             cp -p "$target/$rel" "$backup_dir/$rel"
@@ -532,25 +547,4 @@ elif [ -s "$stage/operations.tsv" ]; then
     if [ -n "$backup_dir" ]; then printf 'Backups: %s\n' "$backup_dir"; fi
 fi
 
-if [ "$operation" = uninstall ]; then
-    printf 'Codex configuration, instructions outside Rig sections, and backup history are preserved.\n'
-    printf 'Use a new Codex session to reload the updated setup.\n'
-    exit 0
-fi
-if [ "$config_preserved" -eq 1 ]; then
-    printf 'Existing %s preserved byte-for-byte.\n' "$config_path"
-    printf 'Current Codex discovers namespaced Rig agents in %s/ automatically.\n' "$agent_directory"
-    cat <<'EOF'
-Rig workflows activate only for requests starting with a workflow alias.
-If you want Rig workflows and multi-agent tools are disabled, manually set enabled = true in the existing
-[agents] table (or add that table if absent). Do not add a duplicate table.
-The root's model and concurrency keep existing settings. Rig role TOML files
-pin their own models and efforts; edit those files to customize them.
-templates/config.toml in the Agent Rig checkout contains optional configuration guidance.
-EOF
-fi
-if [ "$global_install" -eq 1 ]; then
-    printf 'Use a new Codex session with this Codex home. Rig remains opt-in in every project.\n'
-else
-    printf 'Use a new Codex session in the target project; trust its project configuration when prompted.\n'
-fi
+provider_report

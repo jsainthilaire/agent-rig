@@ -1,0 +1,3 @@
+# Small general-purpose setup
+agents: explorer implementer tester reviewer
+workflows: feature bug quick

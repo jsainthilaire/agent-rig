@@ -1,2 +1,5 @@
 .agent-rig/backups/
 .agent-rig/.install-lock/
+.agent-rig/*/backups/
+.agent-rig/*/.install-lock/
+__pycache__/

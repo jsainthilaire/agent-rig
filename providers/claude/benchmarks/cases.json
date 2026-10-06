@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "explorer-map",
+      "role": "explorer",
+      "prompt": "Map the quote and order lookup call paths, locate existing tests, describe conventions, and identify the smallest implementation area. Inspect and report without changes.",
+      "context": [
+        "shop/api.py",
+        "shop/pricing.py",
+        "shop/repository.py",
+        "test_shop.py"
+      ],
+      "rubric": {
+        "call_paths": "Trace quote -> total_price and order_details -> find_order, with concrete paths.",
+        "tests": "Locate the existing normal-quantity test and note its scope.",
+        "conventions": "Identify Decimal money, parameterized SQL, and package boundaries.",
+        "scope": "Propose bounded changes with evidence and unresolved questions."
+      },
+      "hard_checks": [
+        "call_paths",
+        "read_only"
+      ]
+    },
+    {
+      "id": "implementer-validation",
+      "role": "implementer",
+      "prompt": "Add validation to total_price: quantity must be a positive integer, excluding bool; unit price must be a finite nonnegative Decimal. Raise ValueError for invalid values. Preserve Decimal cent rounding and package conventions. Edit only shop/pricing.py; run existing checks.",
+      "context": [
+        "shop/pricing.py",
+        "shop/api.py",
+        "test_shop.py"
+      ],
+      "rubric": {
+        "correctness": "Reject zero, negatives, bool, non-integer quantities, negative/nonfinite prices, and non-Decimal prices.",
+        "coding": "Use straightforward validation with ValueError, preserving Decimal output.",
+        "architecture": "Keep API and persistence code unchanged; edit only the assigned file.",
+        "verification": "Existing tests and focused edge checks succeed; report actual commands."
+      },
+      "hard_checks": [
+        "correctness",
+        "scoped_edits"
+      ]
+    },
+    {
+      "id": "database-unique-reference",
+      "role": "database",
+      "prompt": "Plan a migration making (tenant_id, reference) unique and tenant_id non-null. Existing data may contain null tenants and duplicate references within a tenant; equal references across tenants are valid. Explain migration sequencing, integrity risks, index behavior, transaction and rollback boundaries. Do not edit or operate on the database.",
+      "context": [
+        "shop/repository.py"
+      ],
+      "rubric": {
+        "integrity": "Find invalid existing rows before enforcing constraints; avoid silent data deletion.",
+        "migration": "Account for SQLite table rebuild where needed and atomic validation/copy.",
+        "index": "Choose a composite tenant/reference uniqueness constraint, allowing cross-tenant repeats.",
+        "rollback": "Explain backup/restore boundaries and how to verify before committing."
+      },
+      "hard_checks": [
+        "integrity",
+        "read_only"
+      ]
+    },
+    {
+      "id": "tester-boundaries",
+      "role": "tester",
+      "prompt": "Independently assess total_price requirements: positive integer quantity excluding bool, finite nonnegative Decimal price, Decimal cent output. Add meaningful tests in test_validation.py only. Do not fix production code. Report failing cases separately from environmental failures.",
+      "context": [
+        "shop/pricing.py",
+        "test_shop.py"
+      ],
+      "rubric": {
+        "edge_cases": "Test zero/negative/noninteger/bool quantity and negative/nonfinite/wrong-type price.",
+        "regressions": "Cover valid zero price and normal Decimal rounding/output.",
+        "independence": "Tests reflect stated requirements and expose existing defects rather than mirror the code.",
+        "reporting": "Distinguish expected fixture failures, commands, and untested behavior."
+      },
+      "hard_checks": [
+        "defects_found",
+        "scoped_edits"
+      ]
+    },
+    {
+      "id": "debugger-reservations",
+      "role": "debugger",
+      "prompt": "Two concurrent reservations of one item each against stock=1 both return True. Investigate the stale-read hypothesis, reproduce safely, trace the causal interleaving, rule out competing explanations, and recommend the smallest safe fix. Do not edit source or shared state.",
+      "context": [
+        "shop/inventory.py"
+      ],
+      "rubric": {
+        "reproduction": "Demonstrate two successful reservations with asyncio.gather on stock=1.",
+        "causality": "Explain the stale read across await and lost update; cite the concrete sequence.",
+        "hypotheses": "Distinguish scheduling/data races from pricing or database explanations.",
+        "fix": "Propose synchronization around check/decrement and regression verification."
+      },
+      "hard_checks": [
+        "root_cause",
+        "read_only"
+      ]
+    },
+    {
+      "id": "reviewer-stable-target",
+      "role": "reviewer",
+      "prompt": "Independently review shop/inventory.py as a stable implementation for concurrent stock reservations. Report actionable correctness defects with severity, trigger, impact, location, and correction. Avoid edits and invented findings.",
+      "context": [
+        "shop/inventory.py"
+      ],
+      "rubric": {
+        "detection": "Find overselling/lost update across the await with a concrete interleaving.",
+        "impact": "Explain stock=1/two successful reservations and business impact.",
+        "judgment": "Recommend synchronization without unrelated architectural changes.",
+        "coverage": "Identify missing concurrency and invalid-quantity tests, and assessment limits."
+      },
+      "hard_checks": [
+        "defect_found",
+        "read_only",
+        "no_false_positives"
+      ]
+    },
+    {
+      "id": "security-tenant-boundary",
+      "role": "security",
+      "prompt": "Assess order_details for cross-tenant data access using authenticated_tenant_id and order_id. Trace trust boundaries and reachable abuse, identify injection defenses accurately, propose mitigation and adversarial checks. Do not edit or perform intrusive probes.",
+      "context": [
+        "shop/api.py",
+        "shop/repository.py"
+      ],
+      "rubric": {
+        "authorization": "Find ignored tenant context and ID-based unauthorized access.",
+        "reachability": "Describe an authenticated attacker guessing another tenant order ID.",
+        "mitigation": "Enforce tenant scoping in the query or an ownership check before returning data.",
+        "accuracy": "Recognize parameterized SQL and avoid inventing injection in this path."
+      },
+      "hard_checks": [
+        "authorization",
+        "read_only",
+        "no_false_positives"
+      ]
+    }
+  ]
+}

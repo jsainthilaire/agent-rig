@@ -5,7 +5,7 @@ import argparse
 from pathlib import Path
 import re
 import sys
-import tomllib
+import runpy
 from urllib.parse import unquote, urlsplit
 
 
@@ -45,20 +45,10 @@ def headings_and_links(path: Path) -> tuple[set[str], list[str]]:
     return anchors, links
 
 
-def validate(root: Path) -> None:
-    agents = {}
-    for path in sorted((root / "agents").glob("*.toml")):
-        config = tomllib.loads(path.read_text(encoding="utf-8"))
-        require(re.fullmatch(r"[a-z_]+", path.stem), f"{path}: invalid logical role name")
-        require(config.get("name") == f"agent_rig_{path.stem}", f"{path}: name must match its namespaced filename")
-        for field in ("description", "developer_instructions"):
-            require(isinstance(config.get(field), str) and config[field].strip(), f"{path}: {field} must be nonempty")
-        require(("model" in config) == ("model_reasoning_effort" in config), f"{path}: specify model and effort together, or inherit both")
-        if "model" in config:
-            require(isinstance(config["model"], str) and config["model"].strip(), f"{path}: model must be nonempty")
-            require(isinstance(config["model_reasoning_effort"], str) and config["model_reasoning_effort"] in EFFORTS, f"{path}: unsupported reasoning effort")
-        agents[path.stem] = config
-    require(agents, "No agent definitions found")
+def validate_provider(root: Path) -> None:
+    provider_root = root
+    module = runpy.run_path(str(provider_root / "validate.py"))
+    agents = module["validate"](provider_root, require)
 
     workflows = {path.stem for path in (root / "workflows").glob("*.md")}
     require(workflows, "No workflow definitions found")
@@ -81,9 +71,20 @@ def validate(root: Path) -> None:
     require(set(presets) == {"minimal", "backend", "security", "full"}, "Expected all four standard presets")
     require(presets["full"]["agents"] == set(agents), "Full preset must include every source role")
     require(presets["full"]["workflows"] == workflows, "Full preset must include every source workflow")
-    require(tomllib.loads((root / "templates/config.toml").read_text(encoding="utf-8")) == {}, "Config template must preserve inherited settings")
 
-    documents = [root / "README.md", *sorted((root / "workflows").glob("*.md")), *sorted((root / "templates").glob("*.md"))]
+    expected_roles = {"explorer", "implementer", "database", "tester", "reviewer", "debugger", "security"}
+    require(set(agents) == expected_roles, f"{root}: expected all seven conceptual roles")
+    require(workflows == {"feature", "bug", "review", "security", "quick"}, f"{root}: expected all five workflows")
+    for path in (root / "workflows").glob("*.md"):
+        referenced = set(re.findall(r"\b(?:explorer|implementer|database|tester|reviewer|debugger|security)\b", path.read_text().lower()))
+        require(referenced <= set(agents), f"{path}: undefined role")
+    print(f"{root.name}: {len(agents)} native agents, {len(workflows)} workflows, {len(presets)} presets validated.")
+
+
+def validate(root: Path) -> None:
+    for provider in ("codex", "claude"):
+        validate_provider(root / "providers" / provider)
+    documents = [root / "README.md", *sorted((root / "providers").rglob("*.md"))]
     link_count = 0
     for path in documents:
         anchors, links = headings_and_links(path)
@@ -97,16 +98,15 @@ def validate(root: Path) -> None:
                 target_anchors = anchors if destination == path else headings_and_links(destination)[0]
                 require(unquote(parts.fragment) in target_anchors, f"{path}: missing heading target {link}")
             link_count += 1
-
     sources = [root / "README.md", root / "Makefile", root / ".gitignore", root / ".gitattributes"]
-    for directory in ("agents", "workflows", "presets", "templates", "bin", "tests"):
-        sources.extend(path for path in (root / directory).iterdir() if path.is_file())
+    for directory in ("providers", "bin", "tests"):
+        sources.extend(path for path in (root / directory).rglob("*") if path.is_file() and "__pycache__" not in path.parts)
     for path in sources:
         content = path.read_bytes()
         require(content.endswith(b"\n"), f"{path}: missing final newline")
         require(b"\r" not in content, f"{path}: source files must use LF line endings")
         require(all(line.rstrip() == line for line in content.splitlines()), f"{path}: trailing whitespace")
-    print(f"Source checks passed: {len(agents)} agents, {len(workflows)} workflows, {len(presets)} presets, {link_count} local links, TOML and source formatting.")
+    print(f"Source checks passed: {link_count} local links and source formatting.")
 
 
 def main() -> int:

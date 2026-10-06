@@ -1,0 +1,13 @@
+version	1
+reviewed	2026-10-05
+tier	fast	claude-haiku-4-5-20251001	-	1	5	1.25	2	0.10	200000	2025-02	fastest
+tier	balanced	claude-sonnet-5-5	medium	2	10	2.50	4	0.20	1000000	2026-06	fast
+tier	strong	claude-opus-5-5	high	4	20	5	8	0.20	1000000	2026-06	moderate
+tier	escalation	claude-fable-5-1	high	10	50	12.50	20	0.25	1000000	2026-06	slower
+role	explorer	fast	balanced	0.90
+role	implementer	balanced	strong	0.95
+role	database	balanced	strong	0.95
+role	tester	balanced	strong	0.90
+role	debugger	balanced	strong	0.90
+role	reviewer	strong	escalation	0.95
+role	security	strong	escalation	0.95

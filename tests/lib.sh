@@ -14,7 +14,7 @@ assert_same() { cmp -s "$1" "$2" || fail "Files differ: $1 and $2"; }
 assert_contains() { grep -Fq -- "$2" "$1" || fail "Missing text '$2' in $1"; }
 
 fingerprint_tree() {
-    (cd -- "$1" && find . -type f ! -path './.agent-rig/backups/*' -exec cksum {} \; | sort)
+    (cd -- "$1" && find . -type f ! -path './.agent-rig/*/backups/*' ! -path './.agent-rig/backups/*' -exec cksum {} \; | sort)
 }
 
 install() {
@@ -54,13 +54,13 @@ reject_global() {
 fixture() {
     local destination=$1
     mkdir -p "$destination"
-    cp -R "$SOURCE_ROOT/agents" "$SOURCE_ROOT/workflows" "$SOURCE_ROOT/presets" "$SOURCE_ROOT/templates" "$SOURCE_ROOT/bin" "$destination/"
+    cp -R "$SOURCE_ROOT/providers" "$SOURCE_ROOT/bin" "$destination/"
 }
 
 find_backup() {
     local base=$1 candidate
     backup=''
-    for candidate in "$base"/.agent-rig/backups/*; do
+    for candidate in "$base"/.agent-rig/codex/backups/*; do
         if [ -d "$candidate" ]; then
             [ -z "$backup" ] || fail 'Expected one backup directory'
             backup=$candidate
