@@ -2,7 +2,7 @@
 import re
 import tomllib
 
-EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+EFFORTS = {"low", "medium", "high", "xhigh", "max", "ultra"}
 
 
 def validate(root, require):

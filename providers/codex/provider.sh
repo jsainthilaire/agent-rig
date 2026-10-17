@@ -32,10 +32,40 @@ provider_render_file() {
     esac
 }
 provider_extra_files() {
+    local role effort effective variant
+    mkdir -p "$stage/effort-sources"
+    for role in $agents; do
+        effective=$stage/effort-sources/$role.toml
+        provider_render_file "$PROVIDER_ROOT/agents/$role.toml" "$effective"
+        for effort in xhigh max ultra; do
+            variant=$stage/effort-sources/agent_rig_${role}_effort_$effort.toml
+            awk -v name="agent_rig_${role}_effort_$effort" -v effort="$effort" '
+                /^developer_instructions = / {
+                    if (!effort_seen) print "model_reasoning_effort = \"" effort "\""
+                    instructions = 1
+                }
+                !instructions && /^name = / { print "name = \"" name "\""; next }
+                !instructions && /^model_reasoning_effort = / {
+                    print "model_reasoning_effort = \"" effort "\""
+                    effort_seen = 1
+                    next
+                }
+                { print }
+            ' "$effective" > "$variant"
+            prepare_managed_file "$variant" "$agent_directory/agent_rig_${role}_effort_$effort.toml"
+        done
+    done
     prepare_managed_file "$RIG_ROOT/providers/claude/review.sh" "$state_directory/reviewers/claude.sh"
 }
 provider_render_instructions() {
+    local role
     cat "$PROVIDER_ROOT/templates/$instructions_template"
+    printf '\n## Installed request effort variants (active Rig requests only)\n\n'
+    printf 'Only the roles listed below have installed effort variants. Select the name in the requested effort column.\n\n'
+    printf '| Role | `effort=xhigh` | `effort=max` | `effort=ultra` |\n| --- | --- | --- | --- |\n'
+    for role in $agents; do
+        printf '| %s | `agent_rig_%s_effort_xhigh` | `agent_rig_%s_effort_max` | `agent_rig_%s_effort_ultra` |\n' "$role" "$role" "$role" "$role"
+    done
     if [ "$global_install" -eq 1 ]; then
         printf '\nExternal reviewer runner: `%s/%s/reviewers/claude.sh`.\n' "$target" "$state_directory"
     else

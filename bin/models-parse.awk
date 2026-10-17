@@ -15,7 +15,7 @@ function validate(p, role, key, value) {
     if (value == "default") return
     if (key == "model") {
         if (value == "inherit" || value !~ /^[a-zA-Z0-9][a-zA-Z0-9._:+\/-]*$/) reject("invalid model ID: " value)
-    } else if (value !~ /^(low|medium|high|xhigh|max)$/ && !(p == "claude" && value == "omit")) {
+    } else if (value !~ /^(low|medium|high|xhigh|max)$/ && !(p == "codex" && value == "ultra") && !(p == "claude" && value == "omit")) {
         reject("invalid effort: " value)
     }
 }

@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import runpy
 import shutil
 import signal
 import subprocess
@@ -13,6 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = ("explorer", "implementer", "database", "tester", "reviewer", "debugger", "security")
+REQUEST_EFFORTS = ("xhigh", "max", "ultra")
 
 
 def files(directory):
@@ -58,6 +60,14 @@ class Models(unittest.TestCase):
         if provider == "codex":
             return self.target / f".codex/agents/agent_rig_{role}.toml"
         return self.target / f".claude/agents/agent-rig-{role}.md"
+
+    def assert_effort_variants(self, canonical):
+        data = tomllib.loads(canonical.read_text())
+        for effort in REQUEST_EFFORTS:
+            name = f"{canonical.stem}_effort_{effort}"
+            variant = canonical.with_name(f"{name}.toml")
+            expected = dict(data, name=name, model_reasoning_effort=effort)
+            self.assertEqual(tomllib.loads(variant.read_text()), expected)
 
     def test_generate_default_files_both_places_and_global(self):
         self.run_rig("config", "init", "--rig")
@@ -144,12 +154,14 @@ class Models(unittest.TestCase):
         result = self.install("--use-models-config", "--role-effort", "reviewer=max")
         data = tomllib.loads(self.agent().read_text())
         self.assertEqual((data["model"], data["model_reasoning_effort"]), ("target-model", "max"))
+        self.assert_effort_variants(self.agent())
         self.assertIn("model: file-2; effort: CLI", result.stdout)
         explicit = self.config("[codex.reviewer]\nmodel = explicit-model\n", self.base / "custom models.ini")
         self.install("--models-config", explicit, "--use-models-config")
         self.assertIn('model = "explicit-model"', self.agent().read_text())
         self.install("--ignore-models-config", "--role-model", "reviewer=cli-model")
         self.assertIn('model = "cli-model"', self.agent().read_text())
+        self.assert_effort_variants(self.agent())
 
     def test_persistence_defaults_resets_and_dormant_roles(self):
         self.install("--role-model", "reviewer=chosen-model", "--role-effort", "reviewer=low",
@@ -187,8 +199,114 @@ class Models(unittest.TestCase):
                                     if not line.startswith(("model =", "model_reasoning_effort ="))) + "\n")
         self.install()
         self.assertNotIn("model", tomllib.loads(self.agent().read_text()))
+        self.assert_effort_variants(self.agent())
         self.install("--role-model", "reviewer=explicit-model", "--role-effort", "reviewer=high")
         self.assertEqual(tomllib.loads(self.agent().read_text())["model"], "explicit-model")
+        self.assert_effort_variants(self.agent())
+
+    def test_request_effort_variants_preserve_all_native_role_fields(self):
+        source = self.rig / "providers/codex/agents/reviewer.toml"
+        # Native-looking lines inside instructions must remain literal instructions.
+        text, closing = source.read_text().rsplit('"""', 1)
+        source.write_text(text + '\nname = "literal-example"\n'
+                          'model_reasoning_effort = "low"\n' + '"""' + closing)
+        self.install()
+        for role in ROLES:
+            with self.subTest(role=role):
+                self.assert_effort_variants(self.agent(role=role))
+        before = files(self.target)
+        self.assertIn("Already up to date", self.install(operation="update").stdout)
+        self.assertEqual(files(self.target), before)
+
+    def test_ultra_is_codex_only_for_source_config_and_cli(self):
+        source = self.rig / "providers/codex/agents/reviewer.toml"
+        source.write_text(source.read_text().replace('model_reasoning_effort = "high"',
+                                                    'model_reasoning_effort = "ultra"'))
+        provider = self.rig / "providers/codex"
+        validated = runpy.run_path(str(provider / "validate.py"))["validate"](provider, self.assertTrue)
+        self.assertEqual(validated["reviewer"]["model_reasoning_effort"], "ultra")
+        self.install()
+        self.assertEqual(tomllib.loads(self.agent().read_text())["model_reasoning_effort"], "ultra")
+        self.config("[codex.reviewer]\neffort = ultra\n")
+        self.install("--use-models-config")
+        self.assert_effort_variants(self.agent())
+        self.install("--ignore-models-config", "--role-effort", "tester=ultra")
+        self.assertEqual(tomllib.loads(self.agent(role="tester").read_text())["model_reasoning_effort"], "ultra")
+        before = files(self.target)
+        self.install("--ignore-models-config", "--role-effort", "reviewer=ultra", provider="claude", ok=False)
+        self.assertEqual(files(self.target), before)
+        self.config("[claude.reviewer]\neffort = ultra\n")
+        before = files(self.target)
+        # Entire input is validated even when its entries target the other provider.
+        self.install("--use-models-config", ok=False)
+        self.assertEqual(files(self.target), before)
+        self.install("--use-models-config", provider="claude", ok=False)
+        self.assertEqual(files(self.target), before)
+
+    def test_variant_collisions_updates_and_preset_retirement(self):
+        variant = self.agent(role="database_effort_ultra")
+        variant.parent.mkdir(parents=True)
+        variant.write_text('# User-owned effort role\n')
+        before = files(self.target)
+        rejected = self.install(ok=False)
+        self.assertIn("unmanaged destination collision", rejected.stdout + rejected.stderr)
+        self.assertEqual(files(self.target), before)
+        self.install("--replace-modified")
+        backups = self.target / ".agent-rig/codex/backups"
+        self.assertTrue(any(p.read_text() == '# User-owned effort role\n'
+                            for p in backups.rglob(variant.name)))
+        variant.write_text(variant.read_text() + '# Local variant change\n')
+        before = files(self.target)
+        self.install(operation="update", ok=False)
+        self.assertEqual(files(self.target), before)
+        rejected = self.install("--preset", "minimal", operation="update", ok=False)
+        self.assertIn("locally modified; removed by preset switch", rejected.stdout + rejected.stderr)
+        self.assertEqual(files(self.target), before)
+        self.install("--preset", "minimal", "--replace-modified", operation="update")
+        for role in ("database", "debugger", "security"):
+            self.assertFalse(self.agent(role=role).exists())
+            for effort in REQUEST_EFFORTS:
+                self.assertFalse(self.agent(role=f"{role}_effort_{effort}").exists())
+                self.assertNotIn(f"agent_rig_{role}_effort_{effort}",
+                                 (self.target / "AGENTS.md").read_text())
+        for role in ("explorer", "implementer", "tester", "reviewer"):
+            self.assert_effort_variants(self.agent(role=role))
+
+    def test_request_effort_instruction_contract(self):
+        # These are prompt conventions, not an executable parser. Check the
+        # installed contract; live agent routing requires authenticated smoke tests.
+        self.install("--preset", "minimal")
+        instructions = (self.target / "AGENTS.md").read_text()
+        clauses = (
+            'rig feature effort=ultra:', 'rig bug effort=xhigh :',
+            'rig feature: effort=max Add search.', '@feature effort=ultra Add search.',
+            'whitespace before the colon is optional',
+            'unknown, empty, or repeated pre-colon effort',
+            'malformed Rig invocation', 'pre-colon `reviewer=` modifier is unsupported',
+            '`xhigh|max|ultra` describes alternatives and is not a valid value',
+            'may appear in either order after the alias',
+            'Stop parsing modifiers at the first ordinary task text',
+            'ignore quoted examples and later occurrences',
+            'including one repeated across the colon',
+            'A modifier alone never activates Rig',
+            'Reset request effort for every new user request',
+            'use the canonical installed role names and their configured efforts',
+            'including follow-ups and replacement agents',
+            'native role file settings take precedence',
+            'Do not edit installations or persist configuration changes',
+            'do not silently downgrade', 'does not change root\'s reasoning effort',
+            'root-only execution has no specialist effort to change',
+            'permitted read-only specialist assignments',
+            'does not change the external reviewer',
+            'An explicit native reviewer selection uses its matching effort variant',
+        )
+        for clause in clauses:
+            with self.subTest(clause=clause):
+                self.assertIn(clause, instructions)
+        for role in ("explorer", "implementer", "tester", "reviewer"):
+            names = ' | '.join(f'`agent_rig_{role}_effort_{effort}`' for effort in REQUEST_EFFORTS)
+            self.assertIn(f'| {role} | {names} |', instructions)
+        self.assertNotIn('agent_rig_database_effort_', instructions)
 
     def test_provider_isolation_and_claude_native_fields(self):
         config = self.config("[codex.reviewer]\nmodel = codex-choice\neffort = low\n"
@@ -275,9 +393,14 @@ class Models(unittest.TestCase):
                 args = ["--global", "--provider", provider, "--yes"]
                 self.run_rig("install", *args, "--use-models-config")
                 self.assertIn("global-choice", (home / f".agent-rig/{provider}/models/overrides.ini").read_text())
+                if provider == "codex":
+                    for role in ROLES:
+                        self.assert_effort_variants(home / f"agents/agent_rig_{role}.toml")
                 self.run_rig("update", *args, "--ignore-models-config")
                 self.run_rig("uninstall", "--global", "--provider", provider)
                 self.assertTrue((home / ".agent-rig/models.ini").exists())
+                if provider == "codex":
+                    self.assertEqual(list((home / "agents").glob("agent_rig_*.toml")), [])
 
     def test_symlink_config_destination_rejected(self):
         outside = self.base / "outside"
@@ -315,6 +438,8 @@ exec "$MODEL_REAL_MV" "$@"
         self.assertFalse((self.target / ".agent-rig/codex/.install-lock").exists())
         self.install(operation="update")
         self.assertIn('model = "before"', self.agent().read_text())
+        for role in ROLES:
+            self.assert_effort_variants(self.agent(role=role))
 
 
 if __name__ == "__main__":

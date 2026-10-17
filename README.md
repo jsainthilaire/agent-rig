@@ -6,6 +6,8 @@ The root agent owns the result: it chooses the design, delegates bounded work, r
 
 **Rig is opt-in for each request.** Start a prompt with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, `rig plan:`, or `rig quick:` to activate it. The equivalent `@feature`, `@bug`, `@review`, `@security`, `@plan`, and `@quick` aliases remain supported for compatibility. Unprefixed requests use your existing setup.
 
+For Codex, use `rig feature effort=ultra : ...` to request one reasoning effort for every delegated Rig role. Choose `xhigh`, `max`, or `ultra`; availability depends on each role's model and the Codex client.
+
 [Quick start](#quick-start) · [Providers](#providers) · [Presets](#presets) · [Workflows](#workflows) · [Model policies](#model-policies) · [Updates and removal](#updates-and-removal) · [Customization](#customization) · [Development](#development)
 
 ## Quick start
@@ -149,6 +151,28 @@ The workflow prefix must appear at the beginning of the request, after optional 
 | `rig plan:` | `@plan` | Research and save a Markdown implementation plan | Inspect → clarify → root plan → choose destination → save and verify |
 | `rig quick:` | `@quick` | Trivial or low-risk changes | Root inspects → edits → verifies |
 
+### Choose effort for one Codex request
+
+Put `effort=xhigh`, `effort=max`, or `effort=ultra` between the workflow name and its required colon. Choose one value:
+
+```text
+rig feature effort=ultra : Add password reset.
+rig bug effort=max: Fix the intermittent checkout failure.
+rig review effort=xhigh : Review the current changes.
+
+# Leading modifiers after the colon and compatibility aliases also work.
+rig feature: effort=ultra reviewer=claude Add password reset.
+@bug effort=max Fix the intermittent checkout failure.
+```
+
+The effort applies to every delegated native Codex role for that request, including testing, review, and replacement agents. Omitting it uses each role's installed defaults. It resets on the next request. Only leading modifiers count; a quoted example or a token later in the task does not select effort. Unknown values and repeated effort modifiers are invalid. Leading `effort` and `reviewer` modifiers after the colon or compatibility alias may appear in either order; an effort before the colon cannot be repeated after it.
+
+Codex custom agent files pin their reasoning effort ahead of spawn-time settings. Installation therefore adds three effort-specific variants for every role in the selected preset, named `agent_rig_<role>_effort_xhigh`, `agent_rig_<role>_effort_max`, and `agent_rig_<role>_effort_ultra`. Rig selects the matching installed variant and keeps that role's model and instructions from the effective installation configuration. Use [model configuration](#choose-your-own-models-and-effort) to customize models across these variants. Direct edits to a canonical agent file do not propagate to the other files. Variants receive the same conflict protection, backups, updates, and uninstall handling as other managed agents.
+
+The selected model and client must support the requested effort. Rig reports missing variants or rejected model/effort combinations without silently lowering effort. This modifier cannot change the running root session's effort; select that in Codex separately. Quick remains root-only, and plan keeps its planning-only boundaries. An external reviewer uses its own CLI defaults, so this modifier covers native Codex roles only. Claude workflows retain their existing effort behavior. See the [official Codex subagent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents) for native setting precedence and effort availability.
+
+Update an existing Codex installation from this checkout and start a new session to load the variants and instructions.
+
 ### Choose a reviewer provider
 
 Put `reviewer=claude` or `reviewer=codex` immediately after the workflow prefix to choose who reviews the work:
@@ -266,7 +290,7 @@ Agent definitions: [Codex agents](providers/codex/agents/) · [Claude agent temp
 
 ## Model policies
 
-Model selection belongs to each provider. The user's root model and effort remain unchanged, including for quick. Role defaults apply when a Rig specialist is delegated an activated task; local native overrides are protected on future installs.
+Model selection belongs to each provider. The user's root model and effort remain unchanged, including for quick. Role defaults apply when a Rig specialist is delegated an activated task unless a Codex request selects an effort variant; local native overrides are protected on future installs.
 
 ### Choose your own models and effort
 
@@ -315,7 +339,7 @@ bin/agent-rig update --target /path/to/project --ignore-models-config --reset-ro
 
 Precedence is shipped defaults → saved overrides → requested resets → checkout config → target config → CLI role flags. Explicit file input replaces the two discovered files. Imports merge specified settings; omitted entries retain earlier choices, while `default` clears that setting's earlier override. To reset without reapplying file choices, pass `--ignore-models-config`.
 
-Both model and effort can be overridden independently. Effort accepts `low`, `medium`, `high`, `xhigh`, and `max`; Claude also accepts `omit` to remove its native effort field. Haiku requires omitted effort. Changing Claude explorer from Haiku to another model requires an explicit effort or `omit`. Model IDs may contain letters, digits, dots, underscores, hyphens, slashes, colons, and plus signs, starting with a letter or digit. Custom IDs need not be in Rig's shipped lineup; access and unknown model/effort compatibility are checked by the provider runtime, not the installer. Inheritance is not a config value; `default` means Rig's shipped setting.
+Both model and effort can be overridden independently. Effort accepts `low`, `medium`, `high`, `xhigh`, and `max`; Codex also accepts `ultra`, and Claude also accepts `omit` to remove its native effort field. Haiku requires omitted effort. Changing Claude explorer from Haiku to another model requires an explicit effort or `omit`. Model IDs may contain letters, digits, dots, underscores, hyphens, slashes, colons, and plus signs, starting with a letter or digit. Custom IDs need not be in Rig's shipped lineup; access and unknown model/effort compatibility are checked by the provider runtime, not the installer. Inheritance is not a config value; `default` means Rig's shipped setting. These are persistent installation choices; the [Codex prompt modifier](#choose-effort-for-one-codex-request) selects effort for one request.
 
 INI files support blank lines, full-line `#` or `;` comments, and unquoted `model`/`effort` values in `[provider.role]` sections. Duplicate sections/keys and unknown providers, roles, settings, or malformed values are rejected. The entire accepted file is validated, but only the selected provider's entries apply. CLI assignments cannot repeat the same role/setting. No configuration is evaluated as code, and installation needs no additional dependencies.
 
@@ -491,6 +515,8 @@ roles and workflows, and wait for its findings.
 ```
 
 Confirm the namespaced explorer runs and returns evidence. Repeat with `@feature` to check the compatibility alias. Try `rig quick:` on a documentation change and confirm root handles it alone. Then make an unprefixed request and confirm the existing process applies. For Claude, also try a small feature with independent testing and review; inspect agent definitions through `/agents` or ask the session to list them. Repeat with a nested working directory and a global installation when applicable.
+
+For Codex, repeat with `rig feature effort=max :` and `rig feature effort=ultra :` using models that support those levels. Inspect agent activity to confirm every delegated role uses its matching `_effort_max` or `_effort_ultra` variant. Check that an unsupported model/effort combination is reported and that the next request without `effort` uses canonical role defaults. Offline checks validate generated files and instructions; they do not establish live effort availability or successful delegation.
 
 For plan, use disposable projects and verify these scenarios in authenticated sessions for both providers (repeat with `@plan`):
 

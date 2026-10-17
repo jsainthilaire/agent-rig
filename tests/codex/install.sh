@@ -22,8 +22,17 @@ for preset in minimal backend security full; do
         assert_contains "$project/AGENTS.md" "${name}: \`agent_rig_${name}\`"
         assert_missing "$project/.codex/agents/$name.toml"
         grep -Eq '^model = "[^"]+"$' "$project/.codex/agents/agent_rig_$name.toml" || fail "Missing model for $name"
-        grep -Eq '^model_reasoning_effort = "(low|medium|high|xhigh|max)"$' "$project/.codex/agents/agent_rig_$name.toml" || fail "Missing or invalid effort for $name"
+        grep -Eq '^model_reasoning_effort = "(low|medium|high|xhigh|max|ultra)"$' "$project/.codex/agents/agent_rig_$name.toml" || fail "Missing or invalid effort for $name"
         agent_count=$((agent_count + 1))
+        for effort in xhigh max ultra; do
+            variant=agent_rig_${name}_effort_$effort
+            assert_file "$project/.codex/agents/$variant.toml"
+            assert_contains "$project/.codex/agents/$variant.toml" "name = \"$variant\""
+            assert_contains "$project/.codex/agents/$variant.toml" "model_reasoning_effort = \"$effort\""
+            assert_contains "$project/AGENTS.md" "\`$variant\`"
+            assert_contains "$project/.agent-rig/codex/manifest.tsv" "$(printf 'file\t.codex/agents/%s.toml\t' "$variant")"
+            agent_count=$((agent_count + 1))
+        done
     done
     for name in $expected_workflows; do
         assert_same "$SOURCE_ROOT/providers/codex/workflows/$name.md" "$project/.agent-rig/codex/workflows/$name.md"
@@ -531,9 +540,7 @@ for preset in minimal backend security full; do
     codex_home="$TEST_ROOT/global $preset/codex home"
     install_global "$SOURCE_ROOT" "$codex_home" --preset "$preset"
     for installed_role in "$codex_home"/agents/*.toml; do
-        role=${installed_role##*/agent_rig_}
-        role=${role%.toml}
-        assert_same "$SOURCE_ROOT/providers/codex/agents/$role.toml" "$installed_role"
+        assert_same "$TEST_ROOT/preset-$preset/.codex/agents/${installed_role##*/}" "$installed_role"
     done
     project=$TEST_ROOT/preset-$preset
     [ "$(find "$codex_home/agents" -type f | wc -l)" -eq "$(find "$project/.codex/agents" -type f | wc -l)" ] || fail "Wrong global agent count for $preset"
