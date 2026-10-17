@@ -4,7 +4,7 @@ Reusable engineering workflows for **Codex** and **Claude Code**. Agent Rig inst
 
 The root agent owns the result: it chooses the design, delegates bounded work, reconciles findings, and verifies completion. Substantial changes get independent testing and review; simple changes stay with root.
 
-**Rig is opt-in for each request.** Start a prompt with `@feature`, `@bug`, `@review`, `@security`, or `@quick` to activate it. Unprefixed requests use your existing setup.
+**Rig is opt-in for each request.** Start a prompt with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, or `rig quick:` to activate it. The equivalent `@feature`, `@bug`, `@review`, `@security`, and `@quick` aliases remain supported for compatibility. Unprefixed requests use your existing setup.
 
 [Quick start](#quick-start) · [Providers](#providers) · [Presets](#presets) · [Workflows](#workflows) · [Model policies](#model-policies) · [Updates and removal](#updates-and-removal) · [Customization](#customization) · [Development](#development)
 
@@ -35,11 +35,11 @@ Without `--yes`, an install or update that needs changes stops without writing i
 Start a new session of the selected provider in the target project, then make a request:
 
 ```text
-@feature Add employee bonus calculations.
-@bug Investigate why this payroll total is incorrect.
-@review Review the latest changes.
-@security Assess the authentication flow.
-@quick Fix the typo in README.md.
+rig feature: Add employee bonus calculations.
+rig bug: Investigate why this payroll total is incorrect.
+rig review: Review the latest changes.
+rig security: Assess the authentication flow.
+rig quick: Fix the typo in README.md.
 ```
 
 Each line above is a separate example request. Installing roles makes them available; root uses only the specialists relevant to the task.
@@ -135,15 +135,15 @@ Definitions are maintained separately in [Codex presets](providers/codex/presets
 
 ## Workflows
 
-The standalone alias must appear at the beginning of the request, after optional whitespace. Aliases are prompt conventions, not native provider commands. Quoting an alias or mentioning it later does not activate Rig. Activation is evaluated again for every request.
+The workflow prefix must appear at the beginning of the request, after optional whitespace. Use `rig <workflow>:` as the recommended form, including the required colon. Existing standalone `@` aliases remain supported for compatibility and select the same workflows. Aliases are prompt conventions, not native provider commands. Quoting an alias, showing it as an example, or mentioning it later does not activate Rig. Activation is evaluated again for every request.
 
-| Alias | Use for | Normal stages |
-| --- | --- | --- |
-| `@feature` | Non-trivial feature development | Explore → root design → implement → independent testing/review → root verification |
-| `@bug` | A failure whose cause needs investigation | Explore → investigate hypotheses → root diagnosis → implement → test → review |
-| `@review` | Existing code or a proposed change | Relevant reviewers → root summary |
-| `@security` | Security assessment | Explore → security analysis → independent review/testing → root summary |
-| `@quick` | Trivial or low-risk changes | Root inspects → edits → verifies |
+| Recommended prefix | Compatibility alias | Use for | Normal stages |
+| --- | --- | --- | --- |
+| `rig feature:` | `@feature` | Non-trivial feature development | Explore → root design → implement → independent testing/review → root verification |
+| `rig bug:` | `@bug` | A failure whose cause needs investigation | Explore → investigate hypotheses → root diagnosis → implement → test → review |
+| `rig review:` | `@review` | Existing code or a proposed change | Relevant reviewers → root summary |
+| `rig security:` | `@security` | Security assessment | Explore → security analysis → independent review/testing → root summary |
+| `rig quick:` | `@quick` | Trivial or low-risk changes | Root inspects → edits → verifies |
 
 ### Feature
 
@@ -395,11 +395,11 @@ python3 tests/claude/benchmarks.py
 Install minimal into a disposable project, start a new authenticated provider session, and request exploration without edits:
 
 ```text
-@feature Explore this repository and propose a feature plan without edits.
+rig feature: Explore this repository and propose a feature plan without edits.
 Use the installed Rig explorer to identify relevant files, report available
 roles and workflows, and wait for its findings.
 ```
 
-Confirm the namespaced explorer runs and returns evidence. Try quick on a documentation change and confirm root handles it alone. Then make an unprefixed request and confirm the existing process applies. For Claude, also try a small feature with independent testing and review; inspect agent definitions through `/agents` or ask the session to list them. Repeat with a nested working directory and a global installation when applicable.
+Confirm the namespaced explorer runs and returns evidence. Repeat with `@feature` to check the compatibility alias. Try `rig quick:` on a documentation change and confirm root handles it alone. Then make an unprefixed request and confirm the existing process applies. For Claude, also try a small feature with independent testing and review; inspect agent definitions through `/agents` or ask the session to list them. Repeat with a nested working directory and a global installation when applicable.
 
 Automated checks validate configuration and lifecycle behavior; authenticated sessions verify real delegation and model access. The [Claude benchmark guide](providers/claude/benchmarks/README.md) describes seven seeded role tasks, independent grading, and reporting for latency, tool reliability, cache-aware costs, retries, failed workflows, and root verification. Passing offline checks does not establish live model quality.

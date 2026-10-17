@@ -73,5 +73,5 @@ provider_report() {
         printf 'If multi-agent tools are disabled, reconcile enabled = true in the existing [agents] table manually.\n'
         printf 'Role models and efforts are independent; see providers/codex/templates/config.toml for guidance.\n'
     fi
-    printf 'Use a new Codex session to reload the setup. Rig activates only through leading workflow aliases.\n'
+    printf 'Use a new Codex session to reload the setup. Rig activates through leading rig <workflow>: prefixes (recommended) or compatible @ aliases.\n'
 }

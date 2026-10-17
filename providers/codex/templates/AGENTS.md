@@ -1,6 +1,8 @@
 ## Activation: explicit workflow aliases only
 
-Agent Rig activates only when the user's request starts with a standalone `@feature`, `@bug`, `@review`, `@security`, or `@quick` token, after optional whitespace. An alias mentioned later, quoted, or shown as an example does not activate it. These tokens select workflows, not individual agents, and are prompt conventions rather than native Codex commands.
+Agent Rig activates only when the user's request starts with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, or `rig quick:`, or with a standalone `@feature`, `@bug`, `@review`, `@security`, or `@quick` token, after optional whitespace. Use `rig <workflow>:` as the recommended form; the `@` aliases remain supported for compatibility. Both forms select the same corresponding workflow.
+
+The colon is required in the `rig <workflow>:` form. An alias mentioned later, quoted, or shown as an example does not activate it. These aliases select workflows, not individual agents, and are prompt conventions rather than native Codex commands.
 
 Without a leading workflow alias, Agent Rig is inactive. Ignore the rest of this managed section and use the user's existing setup, project instructions, and normal Codex behavior. Do not automatically select a Rig workflow, read Rig workflow files, impose Rig coordination or validation rules, or spawn `agent_rig_*` roles. Existing non-Rig agents remain governed by the user's setup. Evaluate activation for each user request; a previous alias does not activate a later unprefixed request.
 

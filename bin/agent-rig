@@ -71,7 +71,8 @@ Update requires an existing manifest and applies this checkout without fetching
 source updates. Use --preset to switch presets. Existing provider configuration
 is preserved. Uninstall uses the recorded manifest and keeps provider
 configuration, surrounding instructions, and backups. Rig remains opt-in
-through workflow aliases.
+through leading workflow aliases: rig feature: (recommended), or @feature
+for compatibility.
 Installs and updates show the plan and ask for confirmation before writing.
 The default is no; dry runs and unchanged installations do not prompt. Colors
 are automatic in terminals; set NO_COLOR to disable them.
@@ -113,7 +114,8 @@ installation_summary() {
     if [ "$allow_modified" -eq 1 ]; then
         printf '%s--replace-modified: conflicting Rig content will be replaced or removed with backups.%s\n' "$color_yellow" "$color_reset"
     fi
-    printf 'Rig activates through leading workflow aliases such as @feature or @quick.\n\n'
+    printf 'Rig activates through leading workflow aliases such as rig feature: or rig quick: (recommended).\n'
+    printf 'The equivalent @feature and @quick aliases remain supported for compatibility.\n\n'
 }
 
 confirm_installation() {
@@ -463,9 +465,9 @@ if [ "$operation" != uninstall ]; then
         printf '\nAvailable workflows:\n\n'
         for workflow in $workflows; do
             if [ "$global_install" -eq 1 ]; then
-                printf -- '- `@%s`: `%s/%s/workflows/%s.md`\n' "$workflow" "$target" "$state_directory" "$workflow"
+                printf -- '- `rig %s:` (recommended), `@%s` (compatibility): `%s/%s/workflows/%s.md`\n' "$workflow" "$workflow" "$target" "$state_directory" "$workflow"
             else
-                printf -- '- `@%s`: [%s/workflows/%s.md](%s/workflows/%s.md)\n' "$workflow" "$state_directory" "$workflow" "$state_directory" "$workflow"
+                printf -- '- `rig %s:` (recommended), `@%s` (compatibility): [%s/workflows/%s.md](%s/workflows/%s.md)\n' "$workflow" "$workflow" "$state_directory" "$workflow" "$state_directory" "$workflow"
             fi
         done
         printf '\n%s\n' "$END_MARKER"

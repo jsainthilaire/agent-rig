@@ -48,12 +48,21 @@ for scope in project global; do
         for workflow in $workflows; do
             assert_same "$SOURCE_ROOT/providers/claude/workflows/$workflow.md" "$destination/.agent-rig/claude/workflows/$workflow.md"
             assert_contains "$destination/CLAUDE.md" ".agent-rig/claude/workflows/$workflow.md"
+            assert_contains "$destination/CLAUDE.md" "- \`rig ${workflow}:\` (recommended), \`@${workflow}\` (compatibility):"
             count=$((count + 1))
         done
         [ "$(find "$destination/.agent-rig/claude/workflows" -type f | wc -l)" -eq "$count" ] || fail 'Incorrect workflow membership'
         assert_contains "$destination/CLAUDE.md" '<!-- agent-rig:begin -->'
         assert_contains "$destination/CLAUDE.md" '<!-- agent-rig:end -->'
         assert_contains "$destination/CLAUDE.md" 'Without a leading workflow alias, Agent Rig is inactive.'
+        for workflow in feature bug review security quick; do
+            assert_contains "$destination/CLAUDE.md" "rig ${workflow}:"
+            assert_contains "$destination/CLAUDE.md" "@${workflow}"
+        done
+        assert_contains "$destination/CLAUDE.md" 'after optional whitespace'
+        assert_contains "$destination/CLAUDE.md" 'The colon is required in the `rig <workflow>:` form.'
+        assert_contains "$destination/CLAUDE.md" 'An alias mentioned later, quoted, or shown as an example does not activate it.'
+        assert_contains "$destination/CLAUDE.md" 'a previous alias does not activate a later unprefixed request.'
         assert_contains "$destination/.agent-rig/claude/manifest.tsv" "$(printf 'provider\tclaude')"
         if [ "$scope" = global ]; then
             assert_contains "$destination/CLAUDE.md" "$destination/.agent-rig/claude/workflows/"

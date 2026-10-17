@@ -74,5 +74,5 @@ provider_prepare_config() { :; }
 
 provider_report() {
     printf 'Claude Code settings, instructions outside Rig sections, and backup history are preserved.\n'
-    printf 'Start a new Claude Code session to load the subagents. Rig activates only through leading workflow aliases.\n'
+    printf 'Start a new Claude Code session to load the subagents. Rig activates through leading rig <workflow>: prefixes (recommended) or compatible @ aliases.\n'
 }

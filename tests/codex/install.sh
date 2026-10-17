@@ -27,8 +27,12 @@ for preset in minimal backend security full; do
     done
     for name in $expected_workflows; do
         assert_same "$SOURCE_ROOT/providers/codex/workflows/$name.md" "$project/.agent-rig/codex/workflows/$name.md"
-        assert_contains "$project/AGENTS.md" "@${name}"
+        assert_contains "$project/AGENTS.md" "- \`rig ${name}:\` (recommended), \`@${name}\` (compatibility):"
         workflow_count=$((workflow_count + 1))
+    done
+    for name in feature bug review security quick; do
+        assert_contains "$project/AGENTS.md" "rig ${name}:"
+        assert_contains "$project/AGENTS.md" "@${name}"
     done
     actual=$(find "$project/.codex/agents" -type f | wc -l)
     [ "$actual" -eq "$agent_count" ] || fail "Wrong agent count for $preset"
@@ -55,6 +59,9 @@ pass 'Default full preset has exact membership and repeat installation is idempo
 
 assert_contains "$project/AGENTS.md" 'Without a leading workflow alias, Agent Rig is inactive.'
 assert_contains "$project/AGENTS.md" 'a previous alias does not activate a later unprefixed request.'
+assert_contains "$project/AGENTS.md" 'after optional whitespace'
+assert_contains "$project/AGENTS.md" 'The colon is required in the `rig <workflow>:` form.'
+assert_contains "$project/AGENTS.md" 'An alias mentioned later, quoted, or shown as an example does not activate it.'
 assert_contains "$project/AGENTS.md" 'All rules and installed-role lists below apply only within an explicitly activated Agent Rig request.'
 activation_line=$(awk '/^## Activation:/ { print NR; exit }' "$project/AGENTS.md")
 ownership_line=$(awk '/^## Root ownership/ { print NR; exit }' "$project/AGENTS.md")
@@ -536,6 +543,14 @@ for preset in minimal backend security full; do
     assert_contains "$codex_home/AGENTS.md" 'Installation scope: **global**'
     assert_contains "$codex_home/AGENTS.md" "use the project section's preset, role list, and workflow paths."
     assert_contains "$codex_home/AGENTS.md" 'Without a leading workflow alias, Agent Rig is inactive.'
+    for name in feature bug review security quick; do
+        assert_contains "$codex_home/AGENTS.md" "rig ${name}:"
+        assert_contains "$codex_home/AGENTS.md" "@${name}"
+    done
+    installed_workflows=$(sed -n 's/^workflows: //p' "$SOURCE_ROOT/providers/codex/presets/$preset.preset")
+    for name in $installed_workflows; do
+        assert_contains "$codex_home/AGENTS.md" "- \`rig ${name}:\` (recommended), \`@${name}\` (compatibility):"
+    done
     assert_contains "$codex_home/AGENTS.md" "$codex_home/.agent-rig/codex/workflows/bug.md"
     assert_contains "$codex_home/AGENTS.md" 'read the selected workflow from its path in the installed workflow list below.'
     assert_missing "$codex_home/.codex"
