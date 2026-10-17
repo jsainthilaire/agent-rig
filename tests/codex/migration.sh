@@ -19,7 +19,7 @@ legacy_install() {
         read -r crc bytes < <(cksum < "$destination/$path")
         printf 'file\t%s\t%s\t%s\n' "$path" "$crc" "$bytes" >> "$destination/.agent-rig/manifest.tsv"
     done
-    for name in feature bug quick; do
+    for name in feature bug quick plan; do
         path=.agent-rig/workflows/$name.md
         read -r crc bytes < <(cksum < "$destination/$path")
         printf 'file\t%s\t%s\t%s\n' "$path" "$crc" "$bytes" >> "$destination/.agent-rig/manifest.tsv"

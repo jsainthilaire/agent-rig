@@ -26,6 +26,47 @@ provider_fingerprint() {
     (cd "$destination" && find ".$provider" ".agent-rig/$provider" -type f -exec cksum {} \; && cksum "$instructions") | sort
 }
 
+# Adding a workflow through a preset update must not adopt user plan documents.
+for provider in codex claude; do
+    rig=$TEST_ROOT/before-plan-source-$provider
+    fixture "$rig"
+    for preset in minimal backend security full; do
+        sed 's/ plan//g' "$rig/providers/$provider/presets/$preset.preset" > "$TEST_ROOT/old-preset"
+        cp "$TEST_ROOT/old-preset" "$rig/providers/$provider/presets/$preset.preset"
+    done
+    rm "$rig/providers/$provider/workflows/plan.md"
+    if [ "$provider" = codex ]; then instructions=AGENTS.md; else instructions=CLAUDE.md; fi
+    for scope in project global; do
+        destination="$TEST_ROOT/add plan $provider $scope"
+        mkdir "$destination"
+        rig_ok install "$rig" "$provider" "$destination" "$scope" --yes --preset minimal
+        assert_missing "$destination/.agent-rig/$provider/workflows/plan.md"
+        printf '# Password reset plan\n\nPreserve this user document.\n' > "$destination/password-reset.md"
+        mkdir "$destination/custom plans"
+        cp "$destination/password-reset.md" "$destination/custom plans/reset.md"
+        cp "$destination/password-reset.md" "$TEST_ROOT/saved-plan"
+        fingerprint_tree "$destination" > "$TEST_ROOT/before"
+        rig_ok update "$SOURCE_ROOT" "$provider" "$destination" "$scope" --dry-run < /dev/null
+        assert_contains "$TEST_ROOT/output" ".agent-rig/$provider/workflows/plan.md"
+        assert_unchanged "$destination"
+        rig_ok update "$SOURCE_ROOT" "$provider" "$destination" "$scope" --yes
+        assert_same "$SOURCE_ROOT/providers/$provider/workflows/plan.md" "$destination/.agent-rig/$provider/workflows/plan.md"
+        assert_contains "$destination/$instructions" '- `rig plan:` (recommended), `@plan` (compatibility):'
+        assert_contains "$destination/.agent-rig/$provider/manifest.tsv" "$(printf 'file\t.agent-rig/%s/workflows/plan.md\t' "$provider")"
+        if grep -Eq 'password-reset[.]md|custom plans/reset[.]md' "$destination/.agent-rig/$provider/manifest.tsv"; then
+            fail 'Installer adopted a user plan document'
+        fi
+        assert_same "$TEST_ROOT/saved-plan" "$destination/password-reset.md"
+        assert_same "$TEST_ROOT/saved-plan" "$destination/custom plans/reset.md"
+        rig_ok uninstall "$SOURCE_ROOT" "$provider" "$destination" "$scope"
+        assert_missing "$destination/.agent-rig/$provider/workflows/plan.md"
+        assert_missing "$destination/.agent-rig/$provider/manifest.tsv"
+        assert_same "$TEST_ROOT/saved-plan" "$destination/password-reset.md"
+        assert_same "$TEST_ROOT/saved-plan" "$destination/custom plans/reset.md"
+        pass "$provider $scope update adds plan workflow and update/removal preserve user plans"
+    done
+done
+
 # Omitted --preset must retain every installed preset, rather than expand it.
 for provider in codex claude; do
     rig=$TEST_ROOT/global-source-$provider
@@ -230,7 +271,7 @@ for name in explorer implementer tester reviewer; do
     read -r crc bytes < <(cksum < "$destination/$path")
     printf 'file\t%s\t%s\t%s\n' "$path" "$crc" "$bytes" >> "$destination/.agent-rig/manifest.tsv"
 done
-for name in feature bug quick; do
+for name in feature bug quick plan; do
     path=.agent-rig/workflows/$name.md
     read -r crc bytes < <(cksum < "$destination/$path")
     printf 'file\t%s\t%s\t%s\n' "$path" "$crc" "$bytes" >> "$destination/.agent-rig/manifest.tsv"

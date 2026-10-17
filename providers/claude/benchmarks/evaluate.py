@@ -21,7 +21,7 @@ USAGE_RATES = {
     "cache_creation_1h_input_tokens": "cache_write_1h_usd",
     "cache_read_input_tokens": "cache_read_usd",
 }
-WORKFLOWS = {"explorer", "feature", "bug", "review", "security", "quick"}
+WORKFLOWS = {"explorer", "feature", "bug", "review", "security", "quick", "plan"}
 
 
 def require(condition, message):

@@ -4,7 +4,7 @@ Reusable engineering workflows for **Codex** and **Claude Code**. Agent Rig inst
 
 The root agent owns the result: it chooses the design, delegates bounded work, reconciles findings, and verifies completion. Substantial changes get independent testing and review; simple changes stay with root.
 
-**Rig is opt-in for each request.** Start a prompt with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, or `rig quick:` to activate it. The equivalent `@feature`, `@bug`, `@review`, `@security`, and `@quick` aliases remain supported for compatibility. Unprefixed requests use your existing setup.
+**Rig is opt-in for each request.** Start a prompt with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, `rig plan:`, or `rig quick:` to activate it. The equivalent `@feature`, `@bug`, `@review`, `@security`, `@plan`, and `@quick` aliases remain supported for compatibility. Unprefixed requests use your existing setup.
 
 [Quick start](#quick-start) · [Providers](#providers) · [Presets](#presets) · [Workflows](#workflows) · [Model policies](#model-policies) · [Updates and removal](#updates-and-removal) · [Customization](#customization) · [Development](#development)
 
@@ -20,7 +20,7 @@ bin/agent-rig install --provider codex --target /path/to/project
 bin/agent-rig install --provider claude --target /path/to/project
 ```
 
-Run both commands against the same project to install both providers. Each defaults to the **full preset**: seven roles and five workflows. Add `--preset minimal`, `--preset backend`, or `--preset security` for a smaller set. Add `--dry-run` to preview changes without writing.
+Run both commands against the same project to install both providers. Each defaults to the **full preset**: seven roles and six workflows. Add `--preset minimal`, `--preset backend`, or `--preset security` for a smaller set. Add `--dry-run` to preview changes without writing.
 
 Before writing, the installer shows the provider, project/global scope, destination, preset, and planned file changes, then asks `Continue with installation? [y/N]`. Enter `yes` to proceed or `no` (or press Enter) to cancel. When the selected provider already has configuration, the summary explains that Rig merges its agents and managed instructions into the setup while preserving existing provider settings and surrounding instructions. Updates ask `Continue with update? [y/N]`; preset changes also require confirmation. Dry runs and unchanged installations do not prompt.
 
@@ -39,6 +39,7 @@ rig feature: Add employee bonus calculations.
 rig bug: Investigate why this payroll total is incorrect.
 rig review: Review the latest changes.
 rig security: Assess the authentication flow.
+rig plan: Plan password reset support and save the plan as Markdown.
 rig quick: Fix the typo in README.md.
 ```
 
@@ -124,12 +125,12 @@ A preset selects which roles and workflows are installed for either provider:
 
 | Preset | Available roles | Available workflows |
 | --- | --- | --- |
-| `minimal` | explorer, implementer, tester, reviewer | feature, bug, quick |
-| `backend` | explorer, implementer, database, tester, reviewer, debugger | feature, bug, review, quick |
-| `security` | explorer, security, reviewer, tester, debugger | security, review, bug, quick |
-| `full` (default) | all seven roles | feature, bug, review, security, quick |
+| `minimal` | explorer, implementer, tester, reviewer | plan, feature, bug, quick |
+| `backend` | explorer, implementer, database, tester, reviewer, debugger | plan, feature, bug, review, quick |
+| `security` | explorer, security, reviewer, tester, debugger | plan, security, review, bug, quick |
+| `full` (default) | all seven roles | plan, feature, bug, review, security, quick |
 
-Root handles a stage when its specialist is absent. For example, minimal leaves uncertain diagnosis with root, while security leaves implementation with root. An unavailable review or assessment workflow does not authorize implementation; root adapts the process to the requested outcome.
+Root handles a stage when its specialist is absent. For example, minimal leaves uncertain diagnosis with root, while security leaves implementation with root. An unavailable review or assessment workflow does not authorize implementation; root adapts the process to the requested outcome. Plan is available in every preset and allows only the requested Markdown plan and required parent directories to be saved.
 
 Definitions are maintained separately in [Codex presets](providers/codex/presets/) and [Claude presets](providers/claude/presets/).
 
@@ -143,6 +144,7 @@ The workflow prefix must appear at the beginning of the request, after optional 
 | `rig bug:` | `@bug` | A failure whose cause needs investigation | Explore → investigate hypotheses → root diagnosis → implement → test → review |
 | `rig review:` | `@review` | Existing code or a proposed change | Relevant reviewers → root summary |
 | `rig security:` | `@security` | Security assessment | Explore → security analysis → independent review/testing → root summary |
+| `rig plan:` | `@plan` | Research and save a Markdown implementation plan | Inspect → clarify → root plan → choose destination → save and verify |
 | `rig quick:` | `@quick` | Trivial or low-risk changes | Root inspects → edits → verifies |
 
 ### Feature
@@ -202,6 +204,16 @@ flowchart TD
 Assessment-only testing uses existing checks or disposable reproductions without persistent source edits. Findings are ranked CRITICAL, HIGH, MEDIUM, or LOW and include evidence, impact, and limitations. Agents should state when no meaningful issues are found.
 
 Workflow definitions: [Codex review](providers/codex/workflows/review.md) · [Claude review](providers/claude/workflows/review.md) · [Codex security](providers/codex/workflows/security.md) · [Claude security](providers/claude/workflows/security.md).
+
+### Plan
+
+Plan researches the requested changes and saves an actionable Markdown document without implementing them. Root resolves blocking decisions and owns the final plan, covering the goal, intended behavior, implementation steps, affected interfaces, tests, risks, and assumptions. Installed specialists may perform bounded read-only research or review when useful; no new role is required.
+
+Unless the request supplies a destination, root asks where to save and proposes `<invocation-directory>/<descriptive-kebab-case-slug>.md`. An explicitly empty reply accepts the default; silence does not. Relative paths resolve against the working directory recorded at invocation, and a supplied directory gets the proposed filename. For an existing filename, root proposes an available numbered alternative unless the user explicitly requested updating that plan. Updates preserve unrelated content.
+
+Only the plan document and required parent directories may be written. Root reads the saved file back, links it, and stops without implementation. If the runtime prohibits writes, root returns the complete plan in chat with its intended destination and saving pending; Rig does not switch modes or bypass permissions. A save or verification failure also returns the complete plan in chat and reports the failure. Saved plans are user artifacts outside installer manifests, so Rig updates and uninstall preserve them.
+
+Workflow definitions: [Codex plan](providers/codex/workflows/plan.md) · [Claude plan](providers/claude/workflows/plan.md).
 
 ### Quick and coordination
 
@@ -401,5 +413,18 @@ roles and workflows, and wait for its findings.
 ```
 
 Confirm the namespaced explorer runs and returns evidence. Repeat with `@feature` to check the compatibility alias. Try `rig quick:` on a documentation change and confirm root handles it alone. Then make an unprefixed request and confirm the existing process applies. For Claude, also try a small feature with independent testing and review; inspect agent definitions through `/agents` or ask the session to list them. Repeat with a nested working directory and a global installation when applicable.
+
+For plan, use disposable projects and verify these scenarios in authenticated sessions for both providers (repeat with `@plan`):
+
+| Scenario | Expected behavior |
+| --- | --- |
+| No destination, then explicitly empty reply | Save at the proposed Markdown path in the invocation directory; silence leaves saving pending |
+| Custom relative/absolute path or directory | Use the supplied path without asking again; append the filename for a directory |
+| Invocation from a nested working directory | Resolve defaults and relative destinations from that directory |
+| Existing filename | Propose an available numbered alternative and wait for the destination choice |
+| Explicit update of an existing plan | Update that document and preserve unrelated content |
+| Completed planning request | Verify and link the plan; source, tests, configuration, and other artifacts remain unchanged |
+| Runtime prohibits writes | Return the complete plan in chat with destination and pending-save status |
+| Save or verification failure | Return the complete plan in chat and report the failure without claiming a verified save |
 
 Automated checks validate configuration and lifecycle behavior; authenticated sessions verify real delegation and model access. The [Claude benchmark guide](providers/claude/benchmarks/README.md) describes seven seeded role tasks, independent grading, and reporting for latency, tool reliability, cache-aware costs, retries, failed workflows, and root verification. Passing offline checks does not establish live model quality.

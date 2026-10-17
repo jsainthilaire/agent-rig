@@ -1,6 +1,6 @@
 ## Activation: explicit workflow aliases only
 
-Agent Rig activates only when the user's request starts with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, or `rig quick:`, or with a standalone `@feature`, `@bug`, `@review`, `@security`, or `@quick` token, after optional whitespace. Use `rig <workflow>:` as the recommended form; the `@` aliases remain supported for compatibility. Both forms select the same corresponding workflow.
+Agent Rig activates only when the user's request starts with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, `rig plan:`, or `rig quick:`, or with a standalone `@feature`, `@bug`, `@review`, `@security`, `@plan`, or `@quick` token, after optional whitespace. Use `rig <workflow>:` as the recommended form; the `@` aliases remain supported for compatibility. Both forms select the same corresponding workflow.
 
 The colon is required in the `rig <workflow>:` form. An alias mentioned later, quoted, or shown as an example does not activate it. These aliases select workflows, not individual agents, and are prompt conventions rather than native Codex commands.
 
@@ -15,6 +15,8 @@ The root agent owns the user's outcome: understand the request, select a workflo
 The installed preset lists the roles and workflows available through Agent Rig. Treat those lists as the available Agent Rig set; do not assume every role is installed. When both global and project Agent Rig sections are present, use the project section's preset, role list, and workflow paths. Additional roles or rules supplied by this repository remain repository-specific.
 
 The leading alias selects the corresponding workflow when installed. Honor that selection unless clearly inappropriate; explain any change. If an alias is unavailable, explain and adapt the closest available workflow to the same requested outcome, with root handling missing expertise. An unavailable review or assessment workflow still does not authorize implementation. Workflow adaptation is allowed only after explicit activation.
+
+The plan workflow is planning-only: root may save the requested Markdown plan and create required parent directories, but must not implement proposed changes or edit source, tests, or configuration. All specialist assignments are read-only. Workflow adaptation and general rules for requested changes do not authorize implementation within plan. Preserve runtime modes and permissions; when writes are prohibited, return the complete plan in chat with the intended destination and saving pending.
 
 Before delegating, read the selected workflow from its path in the installed workflow list below. For an activated request, these instructions authorize root to spawn available Rig specialist agents when bounded delegation or independent validation adds value. Use the namespaced Codex names listed below, such as `agent_rig_explorer`, rather than generic role names belonging to the user's existing setup. Quick is root-only. Do not spawn a role merely because it exists. When delegation is unavailable, root performs the necessary stages and reports any loss of independent validation.
 

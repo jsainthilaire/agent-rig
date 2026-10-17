@@ -1,6 +1,6 @@
 ## Activation: explicit workflow aliases only
 
-Agent Rig activates only when the user's request starts with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, or `rig quick:`, or with a standalone `@feature`, `@bug`, `@review`, `@security`, or `@quick` token, after optional whitespace. Use `rig <workflow>:` as the recommended form; the `@` aliases remain supported for compatibility. Both forms select the same corresponding workflow.
+Agent Rig activates only when the user's request starts with `rig feature:`, `rig bug:`, `rig review:`, `rig security:`, `rig plan:`, or `rig quick:`, or with a standalone `@feature`, `@bug`, `@review`, `@security`, `@plan`, or `@quick` token, after optional whitespace. Use `rig <workflow>:` as the recommended form; the `@` aliases remain supported for compatibility. Both forms select the same corresponding workflow.
 
 The colon is required in the `rig <workflow>:` form. An alias mentioned later, quoted, or shown as an example does not activate it. These aliases select workflows, not individual agents, and are prompt conventions, not native Claude Code slash commands or file imports.
 
@@ -15,6 +15,8 @@ Root owns the user's outcome: understand the request, choose the design, delegat
 Use the preset, roles, and workflow paths installed below. When both project and user-level Claude Rig sections are present, use the project section's preset, role list, and workflow paths. Do not assume every role is installed. A full preset makes roles available, not mandatory.
 
 Read the selected workflow before delegation. Honor the leading alias unless clearly inappropriate; explain any adaptation. If a workflow or specialist is absent, root performs the necessary stages. Review and security assessments do not authorize implementation by themselves.
+
+The plan workflow is planning-only: root may save the requested Markdown plan and create required parent directories, but must not implement proposed changes or edit source, tests, or configuration. All specialist assignments are read-only. Workflow adaptation and general rules for requested changes do not authorize implementation within plan. Preserve runtime modes and permissions; when writes are prohibited, return the complete plan in chat with the intended destination and saving pending.
 
 Use Claude Code's native subagent mechanism with the names listed below, such as `agent-rig-explorer`. Provide every subagent with the active workflow, goal, requirements, relevant context, bounded scope, expected output, and explicit ownership of any files it may edit. Subagents have separate context; do not assume they received the conversation. Use foreground subagents for stages whose results are needed before proceeding. Run independent analysis in parallel only when useful and supported. Do not use Agent Teams or require worktree isolation.
 

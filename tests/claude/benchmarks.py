@@ -27,6 +27,21 @@ def outcome(run_id="one", success=True, latency=30):
 
 
 class Measurements(unittest.TestCase):
+    def test_root_only_plan_workflow_records_cost_and_outcome(self):
+        root = {"type": "agent", "run_id": "plan-one", "task_id": "plan", "workflow": "plan",
+                "role": "root", "model": "claude-opus-5-5", "effort": "high", "latency_seconds": 5,
+                "reported_cost_usd": 0.25, "false_positives": 0, "tool_errors": 0}
+        result = {**outcome("plan-one", latency=8), "workflow": "plan"}
+        report = BENCHMARK["summarize"]([root, result], POLICY, CASES)
+        self.assertEqual(set(report["roles"]), {"root"})
+        self.assertEqual(set(report["workflows"]), {"plan"})
+        self.assertEqual(report["roles"]["root"]["attempts"], 1)
+        workflow = report["workflows"]["plan"]
+        self.assertEqual((workflow["runs"], workflow["successes"], workflow["total_agent_attempts"]), (1, 1, 1))
+        self.assertAlmostEqual(workflow["total_cost_usd"], 0.25)
+        self.assertAlmostEqual(workflow["cost_per_successful_outcome_usd"], 0.25)
+        self.assertEqual(workflow["average_wall_latency_seconds"], 8)
+
     def test_cache_costs_use_model_specific_rates(self):
         self.assertAlmostEqual(BENCHMARK["cost"](attempt(), POLICY), 0.002275)
         fable = {"model": "claude-fable-5-1", "usage": {"input_tokens": 1000, "output_tokens": 1000, "cache_read_input_tokens": 1000}}

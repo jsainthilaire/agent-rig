@@ -95,7 +95,7 @@ def main():
                     assert PROMPT.decode() in result.stdout
                     assert "Scope:  " + scope in result.stdout
                     assert str(destination) in result.stdout
-                    assert "minimal (4 agents, 3 workflows)" in result.stdout
+                    assert "minimal (4 agents, 4 workflows)" in result.stdout
                     assert "rig feature:" in result.stdout
                     assert "@feature" in result.stdout
                     assert result.stdout.index("rig feature:") < result.stdout.index("@feature")

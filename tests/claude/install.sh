@@ -55,7 +55,7 @@ for scope in project global; do
         assert_contains "$destination/CLAUDE.md" '<!-- agent-rig:begin -->'
         assert_contains "$destination/CLAUDE.md" '<!-- agent-rig:end -->'
         assert_contains "$destination/CLAUDE.md" 'Without a leading workflow alias, Agent Rig is inactive.'
-        for workflow in feature bug review security quick; do
+        for workflow in feature bug review security quick plan; do
             assert_contains "$destination/CLAUDE.md" "rig ${workflow}:"
             assert_contains "$destination/CLAUDE.md" "@${workflow}"
         done

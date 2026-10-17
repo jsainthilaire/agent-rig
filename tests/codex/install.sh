@@ -8,10 +8,10 @@ for preset in minimal backend security full; do
     mkdir "$project"
     install "$SOURCE_ROOT" "$project" --preset "$preset"
     case $preset in
-        minimal) expected_agents='explorer implementer tester reviewer'; expected_workflows='feature bug quick' ;;
-        backend) expected_agents='explorer implementer database tester reviewer debugger'; expected_workflows='feature bug review quick' ;;
-        security) expected_agents='explorer security reviewer tester debugger'; expected_workflows='security review bug quick' ;;
-        full) expected_agents='explorer implementer database tester reviewer debugger security'; expected_workflows='feature bug review security quick' ;;
+        minimal) expected_agents='explorer implementer tester reviewer'; expected_workflows='feature bug quick plan' ;;
+        backend) expected_agents='explorer implementer database tester reviewer debugger'; expected_workflows='feature bug review quick plan' ;;
+        security) expected_agents='explorer security reviewer tester debugger'; expected_workflows='security review bug quick plan' ;;
+        full) expected_agents='explorer implementer database tester reviewer debugger security'; expected_workflows='feature bug review security quick plan' ;;
     esac
     agent_count=0
     workflow_count=0
@@ -30,7 +30,7 @@ for preset in minimal backend security full; do
         assert_contains "$project/AGENTS.md" "- \`rig ${name}:\` (recommended), \`@${name}\` (compatibility):"
         workflow_count=$((workflow_count + 1))
     done
-    for name in feature bug review security quick; do
+    for name in feature bug review security quick plan; do
         assert_contains "$project/AGENTS.md" "rig ${name}:"
         assert_contains "$project/AGENTS.md" "@${name}"
     done
@@ -98,7 +98,7 @@ for name in explorer implementer tester reviewer; do
     read -r crc bytes < <(cksum < "$project/.codex/agents/$name.toml")
     printf 'file\t.codex/agents/%s.toml\t%s\t%s\n' "$name" "$crc" "$bytes" >> "$TEST_ROOT/legacy-manifest"
 done
-for name in feature bug quick; do
+for name in feature bug quick plan; do
     read -r crc bytes < <(cksum < "$project/.agent-rig/codex/workflows/$name.md")
     printf 'file\t.agent-rig/codex/workflows/%s.md\t%s\t%s\n' "$name" "$crc" "$bytes" >> "$TEST_ROOT/legacy-manifest"
 done
@@ -543,12 +543,13 @@ for preset in minimal backend security full; do
     assert_contains "$codex_home/AGENTS.md" 'Installation scope: **global**'
     assert_contains "$codex_home/AGENTS.md" "use the project section's preset, role list, and workflow paths."
     assert_contains "$codex_home/AGENTS.md" 'Without a leading workflow alias, Agent Rig is inactive.'
-    for name in feature bug review security quick; do
+    for name in feature bug review security quick plan; do
         assert_contains "$codex_home/AGENTS.md" "rig ${name}:"
         assert_contains "$codex_home/AGENTS.md" "@${name}"
     done
     installed_workflows=$(sed -n 's/^workflows: //p' "$SOURCE_ROOT/providers/codex/presets/$preset.preset")
     for name in $installed_workflows; do
+        assert_same "$SOURCE_ROOT/providers/codex/workflows/$name.md" "$codex_home/.agent-rig/codex/workflows/$name.md"
         assert_contains "$codex_home/AGENTS.md" "- \`rig ${name}:\` (recommended), \`@${name}\` (compatibility):"
     done
     assert_contains "$codex_home/AGENTS.md" "$codex_home/.agent-rig/codex/workflows/bug.md"

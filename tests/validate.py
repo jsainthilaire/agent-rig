@@ -74,7 +74,8 @@ def validate_provider(root: Path) -> None:
 
     expected_roles = {"explorer", "implementer", "database", "tester", "reviewer", "debugger", "security"}
     require(set(agents) == expected_roles, f"{root}: expected all seven conceptual roles")
-    require(workflows == {"feature", "bug", "review", "security", "quick"}, f"{root}: expected all five workflows")
+    require(workflows == {"feature", "bug", "review", "security", "quick", "plan"}, f"{root}: expected all six workflows")
+    require(all("plan" in fields["workflows"] for fields in presets.values()), "Every preset must include the plan workflow")
     for path in (root / "workflows").glob("*.md"):
         referenced = set(re.findall(r"\b(?:explorer|implementer|database|tester|reviewer|debugger|security)\b", path.read_text().lower()))
         require(referenced <= set(agents), f"{path}: undefined role")
