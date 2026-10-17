@@ -268,6 +268,59 @@ Agent definitions: [Codex agents](providers/codex/agents/) · [Claude agent temp
 
 Model selection belongs to each provider. The user's root model and effort remain unchanged, including for quick. Role defaults apply when a Rig specialist is delegated an activated task; local native overrides are protected on future installs.
 
+### Choose your own models and effort
+
+Prepare an editable config before installing. Generate it in the Rig checkout, the destination project, or a provider home:
+
+```bash
+# Start from defaults and edit models.ini manually.
+bin/agent-rig config init --rig
+bin/agent-rig config init --target /path/to/project
+
+# Or answer model and effort prompts for each role.
+bin/agent-rig config init --target /path/to/project --interactive
+bin/agent-rig config init --global --provider codex --interactive
+```
+
+`--rig` writes `<rig-checkout>/models.ini`; `--target` writes `<target>/.agent-rig/models.ini`. Both include all seven roles for both providers unless `--provider codex` or `--provider claude` is supplied. `--global` writes `<provider-home>/.agent-rig/models.ini` and requires a single provider. Project targets must already exist. Creation does not install Rig or change provider settings. Existing config files are protected; edit them manually or explicitly pass `--overwrite`. Interactive creation previews the complete file and asks before saving, including on overwrite. Enter keeps a setting at `default`; EOF or cancellation saves nothing.
+
+Generated files use `default` as their active values, with current model and effort defaults in comments. Untouched settings follow future shipped defaults. Replace individual values to pin choices:
+
+```ini
+[codex.reviewer]
+model = gpt-6.1-sol
+effort = high
+
+[claude.implementer]
+model = claude-sonnet-5-5
+effort = high
+```
+
+Install/update automatically discovers the checkout config and the target's config, or the provider home's config for `--global`. It lists the paths and asks `Apply these model configuration files? [y/N]`. Target entries override checkout entries. Declining skips both files while retaining saved choices and explicit role flags. Use `--models-config FILE` to select a single file instead of discovery; relative paths resolve from the invocation directory. There is still a loading question for an explicit file.
+
+For automation, choose `--use-models-config` to accept loading or `--ignore-models-config` to skip discovery. **`--yes` accepts installation only**, so unanswered config consent stops without changing the target. Dry runs also ask about discovered files unless a consent flag is supplied, and never write.
+
+```bash
+bin/agent-rig install --provider codex --target /path/to/project --use-models-config
+
+# Explicit role flags take precedence over file values; repeat for other roles.
+bin/agent-rig update --provider codex --target /path/to/project \
+  --ignore-models-config --role-model reviewer=gpt-6.1-sol --role-effort reviewer=high
+
+# Clear one setting, a role, or all saved overrides.
+bin/agent-rig update --target /path/to/project --ignore-models-config --role-effort reviewer=default
+bin/agent-rig update --target /path/to/project --ignore-models-config --reset-role reviewer
+bin/agent-rig update --target /path/to/project --ignore-models-config --reset-role all
+```
+
+Precedence is shipped defaults → saved overrides → requested resets → checkout config → target config → CLI role flags. Explicit file input replaces the two discovered files. Imports merge specified settings; omitted entries retain earlier choices, while `default` clears that setting's earlier override. To reset without reapplying file choices, pass `--ignore-models-config`.
+
+Both model and effort can be overridden independently. Effort accepts `low`, `medium`, `high`, `xhigh`, and `max`; Claude also accepts `omit` to remove its native effort field. Haiku requires omitted effort. Changing Claude explorer from Haiku to another model requires an explicit effort or `omit`. Model IDs may contain letters, digits, dots, underscores, hyphens, slashes, colons, and plus signs, starting with a letter or digit. Custom IDs need not be in Rig's shipped lineup; access and unknown model/effort compatibility are checked by the provider runtime, not the installer. Inheritance is not a config value; `default` means Rig's shipped setting.
+
+INI files support blank lines, full-line `#` or `;` comments, and unquoted `model`/`effort` values in `[provider.role]` sections. Duplicate sections/keys and unknown providers, roles, settings, or malformed values are rejected. The entire accepted file is validated, but only the selected provider's entries apply. CLI assignments cannot repeat the same role/setting. No configuration is evaluated as code, and installation needs no additional dependencies.
+
+Explicit choices are saved in `.agent-rig/<provider>/models/overrides.ini` and retained across installs, updates, and preset switches. Roles omitted by a preset keep their saved choices for later. This saved state participates in conflict protection, backups, rollback, and uninstall; manage choices through input files or flags. Manually edited native agents remain protected, so adopting overrides over conflicting local edits requires the existing `--replace-modified` option. User-authored `models.ini` files remain through uninstall; the checkout-root copy is gitignored. Root session settings and external-review CLI defaults remain unchanged.
+
 ### Codex defaults
 
 Codex roles specify `model` and `model_reasoning_effort` in their TOML files:
@@ -375,7 +428,7 @@ Additional project instructions can go here.
 
 Updates preserve content outside the managed section byte-for-byte, including CRLF line endings. Edits inside the section, even line-ending changes, remain protected local modifications. Relative project workflow paths resolve against the file containing the Rig section, including when a session starts in a project subdirectory.
 
-Edit installed native agents and workflows to customize one project or global setup. For Claude model overrides, edit native frontmatter; editing the installed policy copy alone does not re-render agents. Change provider source assets to set defaults for future installs. Claude source agents contain model/effort placeholders and must be rendered by installation before use.
+Use [model configuration](#choose-your-own-models-and-effort) for persistent model and effort choices, or edit installed native agents and workflows directly to customize one setup. Native edits remain protected; editing the installed Claude policy copy alone does not re-render agents. Change provider source assets to set defaults for future installs. Claude source agents contain model/effort placeholders and must be rendered by installation before use.
 
 Commit installed instructions, agents, workflows, policy copies, and manifests when teammates should share the setup. Keep backups and temporary locks out of project version control, for example:
 

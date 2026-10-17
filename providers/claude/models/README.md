@@ -1,6 +1,8 @@
 # Claude model policy
 
-[policy.tsv](policy.tsv) is the single source of truth for Claude role models, effort defaults, pricing metadata, and quality thresholds. All presets share it. The provider renders native model and effort frontmatter into installed agents, copies the validated policy to `.agent-rig/claude/models/policy.tsv`, and includes the tier table in the managed `CLAUDE.md` section. Codex assets and model policy remain independent.
+[policy.tsv](policy.tsv) is the single source of truth for shipped Claude role models, effort defaults, pricing metadata, and quality thresholds. All presets share it. The provider renders native model and effort frontmatter into installed agents, copies the validated policy to `.agent-rig/claude/models/policy.tsv`, and includes the tier table in the managed `CLAUDE.md` section. Codex assets and model policy remain independent.
+
+Users may override each role's model and effort through [model configuration](../../../README.md#choose-your-own-models-and-effort) or `--role-model`/`--role-effort` flags. `config init` generates a default-based INI file, optionally prompting interactively. Overrides apply after tier resolution, remain independent of one another, and are saved separately from the shipped policy in `.agent-rig/claude/models/overrides.ini`. The managed instructions show effective role choices separately from shipped tier defaults. Changing only a model retains the role's effort; Haiku requires `omit`, and changing explorer to a non-Haiku model requires an explicit effort or `omit`. Unknown models are not assigned a tier automatically.
 
 Policy reviewed on **2026-10-05**. These defaults follow the requested role strategy and current provider specifications; they have not yet been proven the cheapest reliable choices by authenticated benchmark runs.
 

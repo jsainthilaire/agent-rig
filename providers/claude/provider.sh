@@ -8,8 +8,18 @@ instructions_template=CLAUDE.md
 instructions_file=CLAUDE.md
 instruction_candidates=CLAUDE.md
 
+provider_model_defaults() {
+    awk -f "$PROVIDER_ROOT/models/policy.awk" "$PROVIDER_ROOT/models/policy.tsv" > "$stage/default-policy.tsv" || die 'Invalid Claude model policy'
+    awk -F '\t' '
+        $1 == "tier" { models[$2] = $3; efforts[$2] = ($4 == "-" ? "omit" : $4) }
+        $1 == "role" { printf "%s\t%s\t%s\n", $2, models[$3], efforts[$3] }
+    ' "$stage/default-policy.tsv"
+}
+
 provider_prepare_install() {
     awk -f "$PROVIDER_ROOT/models/policy.awk" "$PROVIDER_ROOT/models/policy.tsv" > "$stage/claude-model-policy.tsv" || die 'Invalid Claude model policy'
+    cp "$stage/claude-model-policy.tsv" "$stage/claude-render-policy.tsv"
+    awk -F '\t' '{ print "effective\t" $1 "\t" $2 "\t" ($3 == "omit" ? "-" : $3) }' "$stage/model-effective.tsv" >> "$stage/claude-render-policy.tsv"
 }
 
 provider_render_file() {
@@ -17,7 +27,7 @@ provider_render_file() {
     case $source in
         "$PROVIDER_ROOT"/agents/*.md)
             role=$(basename -- "$source" .md)
-            awk -v role="$role" -f "$PROVIDER_ROOT/models/render.awk" "$stage/claude-model-policy.tsv" "$source" > "$destination" ;;
+            awk -v role="$role" -f "$PROVIDER_ROOT/models/render.awk" "$stage/claude-render-policy.tsv" "$source" > "$destination" ;;
         *) cp "$source" "$destination" ;;
     esac
 }
@@ -38,6 +48,7 @@ provider_render_instructions() {
     awk -F '\t' '$1 == "tier" { printf "| %s | `%s` | %s |\n", $2, $3, ($4 == "-" ? "not supported" : $4) }' "$stage/claude-model-policy.tsv"
     printf '\n| Role | Default tier | Next tier |\n| --- | --- | --- |\n'
     awk -F '\t' '$1 == "role" { printf "| %s | %s | %s |\n", $2, $3, $4 }' "$stage/claude-model-policy.tsv"
+    models_instruction_table
     if [ "$global_install" -eq 1 ]; then
         printf '\nInstalled policy: `%s/%s/models/policy.tsv`.\n' "$target" "$state_directory"
     else
@@ -71,6 +82,7 @@ provider_manifest_patterns() {
     fi
     manifest_files="$manifest_files|^[.]agent-rig/claude/workflows/[a-z_]+[.]md$"
     manifest_files="$manifest_files|^[.]agent-rig/claude/models/policy[.]tsv$"
+    manifest_files="$manifest_files|^[.]agent-rig/claude/models/overrides[.]ini$"
     manifest_files="$manifest_files|^[.]agent-rig/claude/reviewers/codex[.]sh$"
     manifest_blocks='^CLAUDE[.]md$'
 }

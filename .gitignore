@@ -3,3 +3,4 @@
 .agent-rig/*/backups/
 .agent-rig/*/.install-lock/
 __pycache__/
+/models.ini

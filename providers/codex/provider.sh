@@ -8,8 +8,29 @@ instructions_template=AGENTS.md
 instructions_file=AGENTS.md
 instruction_candidates='AGENTS.md AGENTS.override.md'
 
+provider_model_defaults() {
+    local role
+    for role in $model_roles; do
+        awk -v role="$role" '
+            /^model = / { model = $0; sub(/^[^"]*"/, "", model); sub(/".*$/, "", model) }
+            /^model_reasoning_effort = / { effort = $0; sub(/^[^"]*"/, "", effort); sub(/".*$/, "", effort) }
+            /^developer_instructions = / { exit }
+            END {
+                if ((model == "") != (effort == "")) exit 1
+                printf "%s\t%s\t%s\n", role, (model ? model : "inherit"), (effort ? effort : "inherit")
+            }
+        ' "$PROVIDER_ROOT/agents/$role.toml" || die "Invalid defaults for $role"
+    done
+}
+
 provider_prepare_install() { :; }
-provider_render_file() { cp "$1" "$2"; }
+provider_render_file() {
+    case $1 in
+        "$PROVIDER_ROOT"/agents/*.toml)
+            awk -v role="$(basename -- "$1" .toml)" -f "$PROVIDER_ROOT/models/render.awk" "$stage/model-effective.tsv" "$1" > "$2" ;;
+        *) cp "$1" "$2" ;;
+    esac
+}
 provider_extra_files() {
     prepare_managed_file "$RIG_ROOT/providers/claude/review.sh" "$state_directory/reviewers/claude.sh"
 }
@@ -50,6 +71,7 @@ provider_manifest_patterns() {
     fi
     manifest_files="$manifest_files|^[.]agent-rig/codex/workflows/[a-z_]+[.]md$"
     manifest_files="$manifest_files|^[.]agent-rig/codex/reviewers/claude[.]sh$"
+    manifest_files="$manifest_files|^[.]agent-rig/codex/models/overrides[.]ini$"
     if [ -n "$legacy_manifest" ]; then
         manifest_files="$manifest_files|^[.]agent-rig/workflows/[a-z_]+[.]md$"
     fi

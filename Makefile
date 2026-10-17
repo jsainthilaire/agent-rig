@@ -1,10 +1,11 @@
 .PHONY: check
 
 check:
-	for script in bin/agent-rig providers/*/provider.sh providers/*/review.sh tests/*.sh tests/*/*.sh; do bash -n "$$script" || exit 1; done
+	for script in bin/agent-rig bin/*.sh providers/*/provider.sh providers/*/review.sh tests/*.sh tests/*/*.sh; do bash -n "$$script" || exit 1; done
 	python3 tests/validate.py
 	python3 tests/reviewers.py
 	python3 tests/installer.py
+	python3 tests/models.py
 	bash tests/update.sh
 	bash tests/codex/install.sh
 	bash tests/codex/uninstall.sh

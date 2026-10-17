@@ -54,6 +54,7 @@ Usage: bash bin/agent-rig install --target DIRECTORY [options]
        bash bin/agent-rig update --global [options]
        bash bin/agent-rig uninstall --target DIRECTORY [options]
        bash bin/agent-rig uninstall --global [options]
+       bash bin/agent-rig config init (--rig | --target DIRECTORY | --global) [options]
 
   --provider NAME      codex (default) or claude
   --global             Codex: CODEX_HOME or ~/.codex; Claude: CLAUDE_CONFIG_DIR or ~/.claude
@@ -62,6 +63,15 @@ Usage: bash bin/agent-rig install --target DIRECTORY [options]
   --yes, -y            Install/update without the yes/no prompt (for automation)
   --replace-modified   Install/update: replace conflicting Rig content with backups
   --remove-modified    Uninstall: remove modified Rig content with backups
+  --role-model R=M     Install/update: override role R's model (repeatable)
+  --role-effort R=E    Install/update: override role R's effort (repeatable)
+  --reset-role ROLE    Install/update: clear saved overrides for ROLE or all
+  --models-config FILE  Use FILE instead of discovered models.ini files
+  --use-models-config  Accept model configuration loading without prompting
+  --ignore-models-config  Skip discovered model configuration files
+  --rig               Config init: write models.ini in the Rig checkout
+  --interactive       Config init: prompt for each role's model and effort
+  --overwrite         Config init: allow replacing an existing config
   --help               Show this help
 
 --global and --target are mutually exclusive. Project targets must already
@@ -76,6 +86,11 @@ for compatibility.
 Installs and updates show the plan and ask for confirmation before writing.
 The default is no; dry runs and unchanged installations do not prompt. Colors
 are automatic in terminals; set NO_COLOR to disable them.
+Install/update discovers models.ini in this checkout and .agent-rig/models.ini
+in the target (or provider home). Loading asks a separate yes/no question;
+--yes does not answer it. Use --use-models-config or --ignore-models-config
+for automation. Model/effort values may be default to clear an override.
+Config init defaults to both providers; --global requires a single provider.
 EOF
 }
 
@@ -92,6 +107,7 @@ installation_summary() {
     for rel in $workflows; do workflow_count=$((workflow_count + 1)); done
     printf '\n%sAgent Rig %s %s%s\n' "$color_bold" "$provider_label" "$action" "$color_reset"
     printf '  Scope:  %s\n  Target: %s\n  Preset: %s (%s agents, %s workflows)\n' "$install_scope" "$target" "$preset" "$role_count" "$workflow_count"
+    models_summary
     if [ "$global_install" -eq 1 ]; then
         printf '  Rig will be available across projects in this provider home.\n'
         if [ ! -d "$target" ]; then printf '  The provider home will be created.\n'; fi
@@ -227,9 +243,13 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+source "$RIG_ROOT/bin/models.sh"
+source "$RIG_ROOT/bin/models-init.sh"
+
 [ "$#" -gt 0 ] || { usage; exit 2; }
 case $1 in
     --help|-h) usage; exit 0 ;;
+    config) models_init "$@"; exit 0 ;;
     install|update|uninstall) operation=$1; shift ;;
     *) die "Unknown command: $1" ;;
 esac
@@ -248,6 +268,29 @@ while [ "$#" -gt 0 ]; do
             esac
             shift 2 ;;
         --dry-run) dry_run=1; shift ;;
+        --role-model|--role-effort|--models-config|--reset-role)
+            [ "$operation" != uninstall ] || die "$1 is only supported by install or update"
+            [ "$#" -ge 2 ] && [ -n "$2" ] || die "Missing value for $1"
+            case $2 in --*) die "Missing value for $1" ;; esac
+            case $2 in *"$(printf '\t')"*|*$'\n'*|*$'\r'*) die "Invalid control character in $1" ;; esac
+            case $1 in
+                --models-config)
+                    [ -z "$models_config" ] || die 'Duplicate --models-config'
+                    models_config=$2 ;;
+                --reset-role)
+                    case $2 in all|explorer|implementer|database|tester|reviewer|debugger|security) ;; *) die "Unknown reset role: $2" ;; esac
+                    model_resets="$model_resets $2" ;;
+                *)
+                    case $2 in *=*) ;; *) die "Expected ROLE=VALUE for $1" ;; esac
+                    if [ "$1" = --role-model ]; then setting=model; else setting=effort; fi
+                    model_cli="$model_cli$(printf '%s\t%s\t%s' "${2%%=*}" "$setting" "${2#*=}")"$'\n' ;;
+            esac
+            shift 2 ;;
+        --use-models-config|--ignore-models-config)
+            [ "$operation" != uninstall ] || die "$1 is only supported by install or update"
+            [ "$models_consent" = ask ] || die 'Model configuration consent flags are mutually exclusive'
+            if [ "$1" = --use-models-config ]; then models_consent=use; else models_consent=ignore; fi
+            shift ;;
         --yes|-y)
             [ "$operation" != uninstall ] || die '--yes is only supported by install or update'
             assume_yes=1; shift ;;
@@ -262,6 +305,7 @@ while [ "$#" -gt 0 ]; do
         *) die "Unknown option: $1" ;;
     esac
 done
+[ "$models_consent" != ignore ] || [ -z "$models_config" ] || die '--ignore-models-config cannot accompany --models-config'
 case $provider in codex|claude) ;; *) die "Unknown provider: $provider" ;; esac
 PROVIDER_ROOT=$RIG_ROOT/providers/$provider
 # Only trusted source adapters are sourced; destination data is never evaluated.
@@ -437,8 +481,12 @@ prepare_managed_file() {
 }
 
 if [ "$operation" != uninstall ]; then
+    models_prepare
     provider_prepare_install
     printf 'agent-rig-manifest\t1\nprovider\t%s\npreset\t%s\nscope\t%s\n' "$provider" "$preset" "$install_scope" > "$stage/new-manifest.tsv"
+    if [ -s "$stage/model-overrides.ini" ] || [ -n "$(old_checksum file "$state_directory/models/overrides.ini")" ]; then
+        prepare_managed_file "$stage/model-overrides.ini" "$state_directory/models/overrides.ini"
+    fi
     for role in $agents; do prepare_managed_file "$PROVIDER_ROOT/agents/$role.$agent_extension" "$agent_directory/$agent_prefix$role.$agent_extension"; done
     for workflow in $workflows; do prepare_managed_file "$PROVIDER_ROOT/workflows/$workflow.md" "$state_directory/workflows/$workflow.md"; done
     provider_extra_files
