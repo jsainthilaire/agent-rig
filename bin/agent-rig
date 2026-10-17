@@ -21,6 +21,7 @@ provider=codex
 state_directory=''
 legacy_manifest=''
 preset=full
+preset_explicit=0
 dry_run=0
 allow_modified=0
 backup_dir=''
@@ -49,28 +50,31 @@ usage() {
     cat <<'EOF'
 Usage: bash bin/agent-rig install --target DIRECTORY [options]
        bash bin/agent-rig install --global [options]
+       bash bin/agent-rig update --target DIRECTORY [options]
+       bash bin/agent-rig update --global [options]
        bash bin/agent-rig uninstall --target DIRECTORY [options]
        bash bin/agent-rig uninstall --global [options]
 
   --provider NAME      codex (default) or claude
   --global             Codex: CODEX_HOME or ~/.codex; Claude: CLAUDE_CONFIG_DIR or ~/.claude
-  --preset NAME        Install full (default), minimal, backend, or security
+  --preset NAME        Install/update: full, minimal, backend, or security
   --dry-run            Show changes without writing to the target
-  --yes, -y            Install without the yes/no prompt (for automation)
-  --replace-modified   Install: replace conflicting Rig content with backups
+  --yes, -y            Install/update without the yes/no prompt (for automation)
+  --replace-modified   Install/update: replace conflicting Rig content with backups
   --remove-modified    Uninstall: remove modified Rig content with backups
   --help               Show this help
 
 --global and --target are mutually exclusive. Project targets must already
 exist; a missing provider home is created only when applying a global install.
-Omitting --preset installs full. Project installation requires --target.
-Existing provider configuration is preserved. Repeat the command to update an
-installation or switch presets. Uninstall uses the recorded manifest and keeps
-provider configuration, surrounding instructions, and backups. Rig remains opt-in
+Omitting --preset installs full; update retains the recorded preset.
+Update requires an existing manifest and applies this checkout without fetching
+source updates. Use --preset to switch presets. Existing provider configuration
+is preserved. Uninstall uses the recorded manifest and keeps provider
+configuration, surrounding instructions, and backups. Rig remains opt-in
 through workflow aliases.
-Installs show the plan and ask for confirmation before writing. The default is
-no; dry runs and unchanged installations do not prompt. Colors are automatic in
-terminals; set NO_COLOR to disable them.
+Installs and updates show the plan and ask for confirmation before writing.
+The default is no; dry runs and unchanged installations do not prompt. Colors
+are automatic in terminals; set NO_COLOR to disable them.
 EOF
 }
 
@@ -78,13 +82,14 @@ die() { printf 'agent-rig: %s\n' "$*" >&2; exit 1; }
 checksum() { cksum < "$1"; }
 
 installation_summary() {
-    local rel existing=0 role_count=0 workflow_count=0
+    local rel existing=0 role_count=0 workflow_count=0 action=installation
+    if [ "$operation" = update ]; then action=update; fi
     for rel in $configuration_paths $instruction_candidates "$agent_directory"; do
         if [ -e "$target/$rel" ] || [ -L "$target/$rel" ]; then existing=1; fi
     done
     for rel in $agents; do role_count=$((role_count + 1)); done
     for rel in $workflows; do workflow_count=$((workflow_count + 1)); done
-    printf '\n%sAgent Rig %s installation%s\n' "$color_bold" "$provider_label" "$color_reset"
+    printf '\n%sAgent Rig %s %s%s\n' "$color_bold" "$provider_label" "$action" "$color_reset"
     printf '  Scope:  %s\n  Target: %s\n  Preset: %s (%s agents, %s workflows)\n' "$install_scope" "$target" "$preset" "$role_count" "$workflow_count"
     if [ "$global_install" -eq 1 ]; then
         printf '  Rig will be available across projects in this provider home.\n'
@@ -112,21 +117,22 @@ installation_summary() {
 }
 
 confirm_installation() {
-    local answer
+    local answer action=installation cancellation=Installation
+    if [ "$operation" = update ]; then action=update; cancellation=Update; fi
     if [ "$assume_yes" -eq 1 ]; then
         printf 'Confirmation accepted via --yes.\n'
         return
     fi
     while :; do
-        printf '%sContinue with installation? [y/N] %s' "$color_cyan" "$color_reset"
+        printf '%sContinue with %s? [y/N] %s' "$color_cyan" "$action" "$color_reset"
         if ! IFS=$' \t' read -r answer; then
             printf '\n'
-            die 'No confirmation received; no target files changed. Use --yes for unattended installation.'
+            die "No confirmation received; no target files changed. Use --yes for unattended $action."
         fi
         case $answer in
             [yY]|[yY][eE][sS]) printf '\n'; return ;;
             ''|[nN]|[nN][oO])
-                printf 'Installation cancelled; no target files changed.\n'
+                printf '%s cancelled; no target files changed.\n' "$cancellation"
                 exit 0 ;;
             *) printf 'Please answer yes or no.\n' ;;
         esac
@@ -222,7 +228,7 @@ trap 'exit 143' TERM
 [ "$#" -gt 0 ] || { usage; exit 2; }
 case $1 in
     --help|-h) usage; exit 0 ;;
-    install|uninstall) operation=$1; shift ;;
+    install|update|uninstall) operation=$1; shift ;;
     *) die "Unknown command: $1" ;;
 esac
 while [ "$#" -gt 0 ]; do
@@ -235,17 +241,17 @@ while [ "$#" -gt 0 ]; do
                 --target) target=$2 ;;
                 --provider) provider=$2 ;;
                 --preset)
-                    [ "$operation" = install ] || die '--preset is only supported by install'
-                    preset=$2 ;;
+                    [ "$operation" != uninstall ] || die '--preset is only supported by install or update'
+                    preset=$2; preset_explicit=1 ;;
             esac
             shift 2 ;;
         --dry-run) dry_run=1; shift ;;
         --yes|-y)
-            [ "$operation" = install ] || die '--yes is only supported by install'
+            [ "$operation" != uninstall ] || die '--yes is only supported by install or update'
             assume_yes=1; shift ;;
         --global) global_install=1; shift ;;
         --replace-modified)
-            [ "$operation" = install ] || die 'Use --remove-modified with uninstall'
+            [ "$operation" != uninstall ] || die 'Use --remove-modified with uninstall'
             allow_modified=1; shift ;;
         --remove-modified)
             [ "$operation" = uninstall ] || die '--remove-modified is only supported by uninstall'
@@ -301,42 +307,6 @@ mkdir -p "$stage/new" "$stage/originals"
 : > "$stage/temp-paths"
 : > "$stage/journal.tsv"
 
-agents=''
-workflows=''
-if [ "$operation" = install ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-        case $line in
-            ''|'#'*) ;;
-            'agents: '*)
-                [ -z "$agents" ] || die 'Duplicate agents field'
-                agents=${line#agents: }
-                [ -n "${agents//[[:space:]]/}" ] || die 'Empty agents field'
-                ;;
-            'workflows: '*)
-                [ -z "$workflows" ] || die 'Duplicate workflows field'
-                workflows=${line#workflows: }
-                [ -n "${workflows//[[:space:]]/}" ] || die 'Empty workflows field'
-                ;;
-            *) die "Invalid preset line: $line" ;;
-        esac
-    done < "$PROVIDER_ROOT/presets/$preset.preset"
-    [ -n "$agents" ] && [ -n "$workflows" ] || die 'Preset must list agents and workflows'
-    seen=' '
-    for role in $agents; do
-        case $role in ''|*[!a-z_]*) die "Invalid agent name: $role" ;; esac
-        case $seen in *" $role "*) die "Duplicate agent: $role" ;; esac
-        seen=$seen$role' '
-        [ -f "$PROVIDER_ROOT/agents/$role.$agent_extension" ] || die "Missing agent: $role"
-    done
-    seen=' '
-    for workflow in $workflows; do
-        case $workflow in ''|*[!a-z_]*) die "Invalid workflow name: $workflow" ;; esac
-        case $seen in *" $workflow "*) die "Duplicate workflow: $workflow" ;; esac
-        seen=$seen$workflow' '
-        [ -f "$PROVIDER_ROOT/workflows/$workflow.md" ] || die "Missing workflow: $workflow"
-    done
-fi
-
 check_path "$state_directory/manifest.tsv"
 check_path "$state_directory/backups" dir
 check_path "$state_directory/.install-lock" dir
@@ -383,7 +353,48 @@ else
     if [ "$operation" = uninstall ]; then
         printf 'No install manifest found at %s/%s; no files removed.\n' "$target" "$manifest_path"
         exit 0
+    elif [ "$operation" = update ]; then
+        die "No install manifest found at $target/$read_manifest; run agent-rig install --provider $provider first with the same --target or --global selection"
     fi
+fi
+if [ "$operation" = update ] && [ "$preset_explicit" -eq 0 ]; then
+    preset=$(awk -F '\t' '$1 == "preset" { print $2 }' "$stage/old-manifest.tsv")
+fi
+
+agents=''
+workflows=''
+if [ "$operation" != uninstall ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        case $line in
+            ''|'#'*) ;;
+            'agents: '*)
+                [ -z "$agents" ] || die 'Duplicate agents field'
+                agents=${line#agents: }
+                [ -n "${agents//[[:space:]]/}" ] || die 'Empty agents field'
+                ;;
+            'workflows: '*)
+                [ -z "$workflows" ] || die 'Duplicate workflows field'
+                workflows=${line#workflows: }
+                [ -n "${workflows//[[:space:]]/}" ] || die 'Empty workflows field'
+                ;;
+            *) die "Invalid preset line: $line" ;;
+        esac
+    done < "$PROVIDER_ROOT/presets/$preset.preset"
+    [ -n "$agents" ] && [ -n "$workflows" ] || die 'Preset must list agents and workflows'
+    seen=' '
+    for role in $agents; do
+        case $role in ''|*[!a-z_]*) die "Invalid agent name: $role" ;; esac
+        case $seen in *" $role "*) die "Duplicate agent: $role" ;; esac
+        seen=$seen$role' '
+        [ -f "$PROVIDER_ROOT/agents/$role.$agent_extension" ] || die "Missing agent: $role"
+    done
+    seen=' '
+    for workflow in $workflows; do
+        case $workflow in ''|*[!a-z_]*) die "Invalid workflow name: $workflow" ;; esac
+        case $seen in *" $workflow "*) die "Duplicate workflow: $workflow" ;; esac
+        seen=$seen$workflow' '
+        [ -f "$PROVIDER_ROOT/workflows/$workflow.md" ] || die "Missing workflow: $workflow"
+    done
 fi
 
 old_checksum() {
@@ -423,7 +434,7 @@ prepare_managed_file() {
     plan_write "$rel"
 }
 
-if [ "$operation" = install ]; then
+if [ "$operation" != uninstall ]; then
     provider_prepare_install
     printf 'agent-rig-manifest\t1\nprovider\t%s\npreset\t%s\nscope\t%s\n' "$provider" "$preset" "$install_scope" > "$stage/new-manifest.tsv"
     for role in $agents; do prepare_managed_file "$PROVIDER_ROOT/agents/$role.$agent_extension" "$agent_directory/$agent_prefix$role.$agent_extension"; done
@@ -586,13 +597,13 @@ fi
 if [ "$dry_run" -eq 1 ]; then
     printf 'Dry run: no target files changed.\n'
 elif [ -s "$stage/operations.tsv" ]; then
-    if [ "$operation" = install ]; then confirm_installation; fi
+    if [ "$operation" != uninstall ]; then confirm_installation; fi
     check_path .agent-rig dir
     check_path "$state_directory/backups" dir
     check_path "$state_directory/.install-lock" dir
     mkdir -p "$target/$state_directory"
     if ! mkdir "$target/$state_directory/.install-lock" 2>/dev/null; then
-        die "Another Agent Rig operation holds $state_directory/.install-lock; remove a stale lock only after confirming no install or uninstall is running"
+        die "Another Agent Rig operation holds $state_directory/.install-lock; remove a stale lock only after confirming no install, update, or uninstall is running"
     fi
     lock_owned=1
     if [ -n "$legacy_manifest" ]; then
@@ -619,10 +630,14 @@ elif [ -s "$stage/operations.tsv" ]; then
             cp -p "$target/$rel" "$backup_dir/$rel"
         fi
     done < "$stage/operations.tsv"
-    if [ "$operation" = install ]; then
+    if [ "$operation" != uninstall ]; then
         progress_total=$(wc -l < "$stage/operations.tsv")
         progress_active=1
-        printf '\n%sInstalling Agent Rig...%s\n' "$color_bold" "$color_reset"
+        if [ "$operation" = update ]; then
+            printf '\n%sUpdating Agent Rig...%s\n' "$color_bold" "$color_reset"
+        else
+            printf '\n%sInstalling Agent Rig...%s\n' "$color_bold" "$color_reset"
+        fi
         render_progress
     fi
     applying=1
@@ -645,7 +660,7 @@ elif [ -s "$stage/operations.tsv" ]; then
             fi
             mv -f "$tmp" "$target/$rel"
         fi
-        if [ "$operation" = install ]; then
+        if [ "$operation" != uninstall ]; then
             progress_current=$((progress_current + 1))
             render_progress
         fi
@@ -653,6 +668,8 @@ elif [ -s "$stage/operations.tsv" ]; then
     committed=1
     if [ "$operation" = uninstall ]; then
         printf 'Uninstalled successfully.\n'
+    elif [ "$operation" = update ]; then
+        printf '%sUpdated successfully.%s\n' "$color_green" "$color_reset"
     else
         printf '%sInstalled successfully.%s\n' "$color_green" "$color_reset"
     fi

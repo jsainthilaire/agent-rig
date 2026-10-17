@@ -22,15 +22,15 @@ bin/agent-rig install --provider claude --target /path/to/project
 
 Run both commands against the same project to install both providers. Each defaults to the **full preset**: seven roles and five workflows. Add `--preset minimal`, `--preset backend`, or `--preset security` for a smaller set. Add `--dry-run` to preview changes without writing.
 
-Before writing, the installer shows the provider, project/global scope, destination, preset, and planned file changes, then asks `Continue with installation? [y/N]`. Enter `yes` to proceed or `no` (or press Enter) to cancel. When the selected provider already has configuration, the summary explains that Rig merges its agents and managed instructions into the setup while preserving existing provider settings and surrounding instructions. Updates and preset changes also require confirmation; dry runs and unchanged installations do not prompt.
+Before writing, the installer shows the provider, project/global scope, destination, preset, and planned file changes, then asks `Continue with installation? [y/N]`. Enter `yes` to proceed or `no` (or press Enter) to cancel. When the selected provider already has configuration, the summary explains that Rig merges its agents and managed instructions into the setup while preserving existing provider settings and surrounding instructions. Updates ask `Continue with update? [y/N]`; preset changes also require confirmation. Dry runs and unchanged installations do not prompt.
 
-Terminal output uses colors and a progress bar that tracks completed file changes. Set `NO_COLOR=1` to disable colors. Redirected output and `TERM=dumb` use plain text with start/end progress lines. For unattended installs, explicitly accept the plan with `--yes` (or `-y`):
+Terminal output uses colors and a progress bar that tracks completed file changes. Set `NO_COLOR=1` to disable colors. Redirected output and `TERM=dumb` use plain text with start/end progress lines. For unattended installs or updates, explicitly accept the plan with `--yes` (or `-y`):
 
 ```bash
 bin/agent-rig install --provider codex --target /path/to/project --yes
 ```
 
-Without `--yes`, an install that needs changes stops without writing if no confirmation input is available.
+Without `--yes`, an install or update that needs changes stops without writing if no confirmation input is available.
 
 Start a new session of the selected provider in the target project, then make a request:
 
@@ -60,14 +60,14 @@ bin/agent-rig install --provider claude --global --preset backend
 | Codex | `~/.codex` | `CODEX_HOME` |
 | Claude Code | `~/.claude` | `CLAUDE_CONFIG_DIR` |
 
-Custom directories work in both install and uninstall commands:
+Custom directories work with install, update, and uninstall commands:
 
 ```bash
 CODEX_HOME=/path/to/codex-home bin/agent-rig install --provider codex --global
 CLAUDE_CONFIG_DIR=/path/to/claude-home bin/agent-rig install --provider claude --global
 ```
 
-`--global` and `--target` are mutually exclusive. A missing global directory is created only when applying an install; a dry run creates no destination files or directories. Global workflow paths are absolute. If you relocate a provider home, rerun installation to refresh them.
+`--global` and `--target` are mutually exclusive. A missing global directory is created only when applying an install; updates require an existing installation, and a dry run creates no destination files or directories. Global workflow paths are absolute. If you relocate a provider home, run update to refresh them.
 
 When a project and a global Rig installation are both present for the same provider, the Rig instructions select the project's preset, role list, and workflow paths. Repository conventions still govern the work.
 
@@ -108,7 +108,7 @@ project/
 
 Global installations use `agents/` directly inside the selected provider home, along with its instruction file and `.agent-rig/<provider>/` state.
 
-Installing, updating, removing, or rolling back one provider preserves the other provider's files. Each has its own manifest, backups, and install/uninstall lock. Claude does not import Codex instructions, and neither provider consumes the other's model policy.
+Installing, updating, removing, or rolling back one provider preserves the other provider's files. Each has its own manifest, backups, and shared lifecycle lock. Claude does not import Codex instructions, and neither provider consumes the other's model policy.
 
 ### Existing configuration
 
@@ -260,14 +260,19 @@ The policy was reviewed on October 5, 2026. Its quality thresholds are initial t
 
 ## Updates and removal
 
-Repeat install from this checkout to update a provider or switch its preset:
+Run update from your current checkout to refresh an existing provider installation without uninstalling:
 
 ```bash
-bin/agent-rig install --provider claude --target /path/to/project --preset backend --dry-run
-bin/agent-rig install --provider claude --target /path/to/project --preset backend
+bin/agent-rig update --provider claude --target /path/to/project --dry-run
+bin/agent-rig update --provider claude --target /path/to/project
+
+# Optionally switch the installed preset.
+bin/agent-rig update --provider claude --target /path/to/project --preset backend
 ```
 
-Use `--provider codex` for Codex, or `--global` instead of `--target` for a global installation. **Omitting `--preset` selects full, including on updates.** An unchanged repeat install is a no-op.
+Use `--provider codex` for Codex, or `--global` instead of `--target` for a global installation. **Update retains the recorded preset unless `--preset` is supplied.** It requires a valid manifest for the selected provider; use install for a new destination. An unchanged update is a no-op.
+
+Update applies the source files in this checkout; it does not fetch releases, run `git pull`, or update the CLI itself. Obtain the desired source revision first, then run update for each installation. Repeat install remains supported and defaults to **full** whenever `--preset` is omitted.
 
 ### Local edits and backups
 
@@ -277,15 +282,15 @@ The selected provider's manifest records ownership and checksums for managed age
 | --- | --- |
 | Managed content is unchanged or already matches the new output | Update or adopt the matching content |
 | Managed content has differing local edits, or an unmanaged destination conflicts | Stop before writing; report conflicts |
-| `--replace-modified` is supplied to install | Back up conflicting content and apply replacement or preset removal |
+| `--replace-modified` is supplied to install or update | Back up conflicting content and apply replacement or preset removal |
 | Preset drops a previously managed role/workflow | Remove that tracked content, subject to local-edit protection |
 | Markers/manifest are malformed, paths are unsafe, scopes conflict, or destinations are symlinks | Stop; replacement flags do not bypass these checks |
 
 ```bash
-bin/agent-rig install --provider claude --target /path/to/project --preset backend --replace-modified
+bin/agent-rig update --provider claude --target /path/to/project --preset backend --replace-modified
 ```
 
-Every existing file changed or deleted is backed up under `.agent-rig/<provider>/backups/<run>/`; the command reports the directory. Install and uninstall stage changes, share the provider's lock, and attempt to restore originals on write failure. Backups are retained; empty directories may remain. Avoid editing destinations during a run. Before removing a leftover `.install-lock`, confirm no operation is running.
+Every existing file changed or deleted is backed up under `.agent-rig/<provider>/backups/<run>/`; the command reports the directory. Install, update, and uninstall stage changes, share the provider's lock, and attempt to restore originals on write failure. Backups are retained; empty directories may remain. Avoid editing destinations during a run. Before removing a leftover `.install-lock`, confirm no operation is running.
 
 ### Uninstall
 
@@ -305,11 +310,11 @@ Uninstall removes recorded managed files, the marked instruction section, and th
 
 Already missing managed content is accepted. Without a manifest, uninstall leaves the destination untouched rather than guessing ownership. A missing global directory is not created by removal. Removing a project installation leaves its global installation intact, and removing one provider leaves the other intact. Start a new provider session afterward.
 
-`--replace-modified` is for install; `--remove-modified` is for uninstall. Run `bin/agent-rig --help` for the complete command options.
+`--replace-modified` is for install or update; `--remove-modified` is for uninstall. Run `bin/agent-rig --help` for the complete command options.
 
 ### Legacy Codex migration
 
-An existing `.agent-rig/manifest.tsv` identifies a legacy Codex installation. The next Codex install validates recorded ownership and local edits, moves tracked workflows to `.agent-rig/codex/workflows/`, refreshes instruction paths, and replaces the old manifest with `.agent-rig/codex/manifest.tsv`. Earlier managed generic role names are migrated to the `agent_rig_` namespace.
+An existing `.agent-rig/manifest.tsv` identifies a legacy Codex installation. The next Codex install or update validates recorded ownership and local edits, moves tracked workflows to `.agent-rig/codex/workflows/`, refreshes instruction paths, and replaces the old manifest with `.agent-rig/codex/manifest.tsv`. Earlier managed generic role names are migrated to the `agent_rig_` namespace.
 
 Changed or removed files are backed up in the new Codex backup directory. Old `.agent-rig/backups/` history and untracked content stay in place. A dry run previews migration without writing; local edits remain protected. Migration takes both the legacy and new Codex locks. If both manifests exist, reconcile them manually before proceeding.
 
@@ -375,6 +380,7 @@ To run checks individually:
 ```bash
 python3 tests/validate.py
 python3 tests/installer.py
+bash tests/update.sh
 bash tests/codex/install.sh
 bash tests/codex/uninstall.sh
 bash tests/codex/migration.sh
