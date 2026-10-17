@@ -2,6 +2,8 @@
 
 Apply only within an explicitly activated Agent Rig request.
 
+Honor the request's leading `reviewer=claude|codex` modifier using the managed instructions' reviewer provider selection rules. Root runs the selected external CLI in place of the native reviewer when the other provider is requested; missing or failed external review remains incomplete without silent substitution.
+
 Use when security is the primary concern.
 
 1. Root defines the authorized assessment target and relevant security requirements.

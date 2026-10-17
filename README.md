@@ -98,10 +98,12 @@ project/
 └── .agent-rig/
     ├── codex/
     │   ├── workflows/<workflow>.md
+    │   ├── reviewers/claude.sh        # Optional external review runner
     │   ├── manifest.tsv
     │   └── backups/<run>/            # Created when existing files change
     └── claude/
         ├── workflows/<workflow>.md
+        ├── reviewers/codex.sh
         ├── models/policy.tsv
         ├── manifest.tsv
         └── backups/<run>/
@@ -146,6 +148,29 @@ The workflow prefix must appear at the beginning of the request, after optional 
 | `rig security:` | `@security` | Security assessment | Explore → security analysis → independent review/testing → root summary |
 | `rig plan:` | `@plan` | Research and save a Markdown implementation plan | Inspect → clarify → root plan → choose destination → save and verify |
 | `rig quick:` | `@quick` | Trivial or low-risk changes | Root inspects → edits → verifies |
+
+### Choose a reviewer provider
+
+Put `reviewer=claude` or `reviewer=codex` immediately after the workflow prefix to choose who reviews the work:
+
+```text
+# From Codex, ask Claude to review.
+rig review: reviewer=claude Review the current changes.
+
+# From Claude Code, ask Codex to review after implementation.
+rig feature: reviewer=codex Add password reset.
+
+# Compatibility aliases accept the same modifier.
+@bug reviewer=claude Fix the failing import.
+```
+
+Omitting the modifier keeps the normal native reviewer. Selecting the current provider also uses its native reviewer. Selecting the other provider runs its CLI for the reviewer stage while root retains ownership of implementation, testing, and findings. Feature, bug, review, and security support the modifier; quick and plan report it as unsupported and retain their normal boundaries. Quoted examples and tokens later in the request do not select a reviewer. Unknown values or repeated leading modifiers are invalid.
+
+The other provider's CLI must be on PATH, authenticated, and compatible with the runner flags; a second Rig installation is unnecessary. The Codex runner also requires Python 3 to inspect and disable configured MCP servers safely. Missing access, denied execution, CLI failures, and empty or incomplete results are reported as an incomplete requested review, with no silent substitution. Rig does not install or authenticate CLIs, bypass session guards, or change permission settings. External reviews use the selected CLI's configured model defaults, independently of Rig's native reviewer model policy.
+
+Each installation manages a runner under its own `.agent-rig/<provider>/reviewers/` directory, including updates, protected local edits, backups, and uninstall. Root invokes it through Bash with the working project as `--target` and a review brief on stdin. The brief identifies requirements, a stable target/base, relevant files including untracked work, and checks already performed. Claude's runner has only Read, Grep, and Glob, so root supplies the diff for change reviews. Codex's runner uses the read-only sandbox, denies approval requests, and disables MCP servers, apps, plugins, delegation, browser, and computer tools for the invocation; Claude's disables editing, shell, skills, and MCP tools. Configured permission hooks remain in place. These use the providers' existing runtime controls, not a separate isolation environment. The runner returns findings to root for reconciliation and follow-up review after accepted fixes.
+
+Update an existing Rig installation from this checkout to load this capability, then start a new provider session. See the [Codex noninteractive CLI documentation](https://learn.chatgpt.com/docs/non-interactive-mode) and [Claude CLI reference](https://code.claude.com/docs/en/cli-reference) for the underlying execution options.
 
 ### Feature
 

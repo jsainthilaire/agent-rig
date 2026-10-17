@@ -24,10 +24,16 @@ provider_render_file() {
 
 provider_extra_files() {
     prepare_managed_file "$stage/claude-model-policy.tsv" "$state_directory/models/policy.tsv"
+    prepare_managed_file "$RIG_ROOT/providers/codex/review.sh" "$state_directory/reviewers/codex.sh"
 }
 
 provider_render_instructions() {
     cat "$PROVIDER_ROOT/templates/$instructions_template"
+    if [ "$global_install" -eq 1 ]; then
+        printf '\nExternal reviewer runner: `%s/%s/reviewers/codex.sh`.\n' "$target" "$state_directory"
+    else
+        printf '\nExternal reviewer runner: `%s/reviewers/codex.sh`, relative to this section.\n' "$state_directory"
+    fi
     printf '\n### Installed Claude model tiers\n\n| Tier | Pinned model | Default effort |\n| --- | --- | --- |\n'
     awk -F '\t' '$1 == "tier" { printf "| %s | `%s` | %s |\n", $2, $3, ($4 == "-" ? "not supported" : $4) }' "$stage/claude-model-policy.tsv"
     printf '\n| Role | Default tier | Next tier |\n| --- | --- | --- |\n'
@@ -65,6 +71,7 @@ provider_manifest_patterns() {
     fi
     manifest_files="$manifest_files|^[.]agent-rig/claude/workflows/[a-z_]+[.]md$"
     manifest_files="$manifest_files|^[.]agent-rig/claude/models/policy[.]tsv$"
+    manifest_files="$manifest_files|^[.]agent-rig/claude/reviewers/codex[.]sh$"
     manifest_blocks='^CLAUDE[.]md$'
 }
 

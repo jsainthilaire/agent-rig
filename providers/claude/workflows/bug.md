@@ -2,6 +2,8 @@
 
 Apply only within an explicitly activated Agent Rig request.
 
+Honor the request's leading `reviewer=claude|codex` modifier using the managed instructions' reviewer provider selection rules. Root runs the selected external CLI in place of the native reviewer when the other provider is requested; missing or failed external review remains incomplete without silent substitution.
+
 Use for a failure whose cause is not immediately obvious. For an obvious low-risk fix, choose quick unless the user's explicit choice warrants the additional investigation.
 
 1. Root establishes observed versus expected behavior and a reproduction or concrete failure evidence.

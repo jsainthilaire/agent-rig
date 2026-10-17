@@ -10,8 +10,17 @@ instruction_candidates='AGENTS.md AGENTS.override.md'
 
 provider_prepare_install() { :; }
 provider_render_file() { cp "$1" "$2"; }
-provider_extra_files() { :; }
-provider_render_instructions() { cat "$PROVIDER_ROOT/templates/$instructions_template"; }
+provider_extra_files() {
+    prepare_managed_file "$RIG_ROOT/providers/claude/review.sh" "$state_directory/reviewers/claude.sh"
+}
+provider_render_instructions() {
+    cat "$PROVIDER_ROOT/templates/$instructions_template"
+    if [ "$global_install" -eq 1 ]; then
+        printf '\nExternal reviewer runner: `%s/%s/reviewers/claude.sh`.\n' "$target" "$state_directory"
+    else
+        printf '\nExternal reviewer runner: `%s/reviewers/claude.sh`, relative to this section.\n' "$state_directory"
+    fi
+}
 
 provider_global_target() {
     if [ -n "${CODEX_HOME:-}" ]; then target=$CODEX_HOME
@@ -40,6 +49,7 @@ provider_manifest_patterns() {
         manifest_files="^[.]codex/agents/($roles)[.]toml$"
     fi
     manifest_files="$manifest_files|^[.]agent-rig/codex/workflows/[a-z_]+[.]md$"
+    manifest_files="$manifest_files|^[.]agent-rig/codex/reviewers/claude[.]sh$"
     if [ -n "$legacy_manifest" ]; then
         manifest_files="$manifest_files|^[.]agent-rig/workflows/[a-z_]+[.]md$"
     fi
